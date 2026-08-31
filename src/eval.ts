@@ -6,6 +6,7 @@
  * the log. That indirection is deliberate — the log is the substrate, and a
  * reporting path that bypassed it would be a second source of truth.
  */
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIMENSIONS } from "./types.ts";
 import type { Dimension } from "./types.ts";
@@ -26,6 +27,20 @@ export interface EvalOptions {
   replay: boolean;
   record: boolean;
   only?: string;
+  /** Report the numbers without failing on them. */
+  noGate?: boolean;
+}
+
+interface Thresholds {
+  min_dimension_accuracy?: Record<string, number>;
+  min_verdict_accuracy?: number;
+  min_drift_accuracy?: number;
+}
+
+function loadThresholds(fixturesDir: string): Thresholds | null {
+  const p = join(fixturesDir, "thresholds.json");
+  if (!existsSync(p)) return null;
+  return JSON.parse(readFileSync(p, "utf8")) as Thresholds;
 }
 
 interface FailedRun {
@@ -79,6 +94,8 @@ export interface EvalReport {
   markdown: string;
   passedCoreChecks: boolean;
   hardFailures: number;
+  /** Aggregate floors from fixtures/thresholds.json that this run fell below. */
+  gateFailures: string[];
   dimensionAccuracy: Record<string, number>;
   verdictAccuracy: number;
 }
@@ -193,6 +210,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
   // drift_type is a classification the judge already makes implicitly. Fixtures
   // that carry an expected value have it checked here.
   const labelled = fixtures.filter((f) => f.labels.expected_drift_type);
+  let driftAccuracy: number | null = null;
   if (labelled.length > 0) {
     lines.push("");
     lines.push("drift_type classification");
@@ -212,6 +230,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
       );
     }
     if (driftTotal > 0) {
+      driftAccuracy = driftOk / driftTotal;
       lines.push(
         `  ${pad("accuracy", 18)} ${driftOk}/${driftTotal}  ${((100 * driftOk) / driftTotal).toFixed(0)}%`,
       );
@@ -287,6 +306,54 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     if (malformed > 0) lines.push(`  ${malformed} malformed line(s) skipped in ${o.eventsPath}`);
   }
 
+  // The aggregate floor. Core checks pin individual behaviours; without this,
+  // dimension, verdict and drift accuracy could all regress with CI still green,
+  // which is what the workflow comment used to claim it prevented.
+  const thresholds = loadThresholds(o.fixturesDir);
+  const gateFailures: string[] = [];
+  if (thresholds && !o.only) {
+    for (const d of DIMENSIONS) {
+      const floor = thresholds.min_dimension_accuracy?.[d];
+      const got = hit[d]!.total > 0 ? hit[d]!.ok / hit[d]!.total : 0;
+      if (floor !== undefined && got < floor - 1e-9) {
+        gateFailures.push(
+          `${d} accuracy ${(100 * got).toFixed(0)}% is below the recorded floor of ${(
+            100 * floor
+          ).toFixed(0)}%`,
+        );
+      }
+    }
+    if (
+      thresholds.min_verdict_accuracy !== undefined &&
+      verdictAcc < thresholds.min_verdict_accuracy - 1e-9
+    ) {
+      gateFailures.push(
+        `overall verdict accuracy ${(100 * verdictAcc).toFixed(0)}% is below the recorded floor of ${(
+          100 * thresholds.min_verdict_accuracy
+        ).toFixed(0)}%`,
+      );
+    }
+    if (
+      thresholds.min_drift_accuracy !== undefined &&
+      driftAccuracy !== null &&
+      driftAccuracy < thresholds.min_drift_accuracy - 1e-9
+    ) {
+      gateFailures.push(
+        `drift_type accuracy ${(100 * driftAccuracy).toFixed(0)}% is below the recorded floor of ${(
+          100 * thresholds.min_drift_accuracy
+        ).toFixed(0)}%`,
+      );
+    }
+  }
+  if (gateFailures.length > 0) {
+    lines.push("");
+    lines.push("threshold gate (fixtures/thresholds.json)");
+    for (const g of gateFailures) lines.push(`  [FAIL] ${g}`);
+  } else if (thresholds && !o.only) {
+    lines.push("");
+    lines.push("threshold gate (fixtures/thresholds.json): all aggregate floors met");
+  }
+
   const costs = runs.map((r) => r.cost_usd).filter((c): c is number => typeof c === "number");
   const totalCost = costs.reduce((a, b) => a + b, 0);
   const judgeMs = runs.reduce((a, r) => a + r.latency_ms, 0);
@@ -313,6 +380,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     markdown: "```\n" + text + "\n```",
     passedCoreChecks: allPassed,
     hardFailures: failed.length,
+    gateFailures: o.noGate ? [] : gateFailures,
     dimensionAccuracy,
     verdictAccuracy: verdictAcc,
   };

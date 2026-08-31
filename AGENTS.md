@@ -16,7 +16,7 @@ tool, not its operator.
     bun install                       # once
     bunx tsc --noEmit                 # typecheck; must be clean before you push
     ./bin/gonogo judge --spec <f> --repo <p> --base <ref>
-    ./bin/gonogo eval --k 3           # live judge over all six fixtures
+    ./bin/gonogo eval --k 3           # live judge over every fixture
     ./bin/gonogo eval --k 1 --only merged-but-wrong    # fast loop while iterating
     ./bin/gonogo eval --replay        # serve recorded judge output, no judge calls
     ./bin/gonogo eval --k 3 --record  # live run, recording output for CI
@@ -109,22 +109,27 @@ not a verdict on the new prompt.
 2. **No prompt text in source files.** Every judge prompt lives in `prompts/*.md`.
    Their sha256 goes into each verdict's provenance, so an inline string silently
    breaks reproducibility.
-3. **Run `gonogo eval` before proposing a prompt change, and again after.**
+3. **Judge quality is gated, not just reported.** `gonogo eval` exits non-zero on
+   a failed core check, a run that produced no verdict, or any aggregate accuracy
+   below `fixtures/thresholds.json`. Lowering a floor is a deliberate act: do it
+   in the same commit as the reason, with a line in EVAL_LOG.md, exactly like a
+   prompt change. `--no-gate` reports without failing, for exploration only.
+4. **Run `gonogo eval` before proposing a prompt change, and again after.**
    A prompt change is only kept if the numbers improve or hold. Record both
    numbers as one line in `EVAL_LOG.md` — including changes you tried and
    reverted, which are the useful half of that file.
-4. **Do not tune a prompt against one fixture.** Six is already a small set;
+5. **Do not tune a prompt against one fixture.** Six is already a small set;
    fitting it exactly is how you get a judge that works on nothing else. If you
    want a new behaviour pinned, add a fixture with a `core_check`.
 5. **Do not hand-edit `replay/` or `events.jsonl`.** The cache is recorded judge
    output; regenerate it with `gonogo eval --k 3 --record` against a live judge
    and say so in the commit message. The log is append-only.
-6. **Self-judge substantive changes.** Run `scripts/self-judge.sh` before merge
+7. **Self-judge substantive changes.** Run `scripts/self-judge.sh` before merge
    and commit the verdict under `audits/`. Commit the verdict you got, not the
    one you wanted.
-7. Conventional commits, small logical units. Commit messages are read by
+8. Conventional commits, small logical units. Commit messages are read by
    strangers; so is every fixture and every prompt.
-8. No secrets, no employer or client references, anywhere. This repo is public.
+9. No secrets, no employer or client references, anywhere. This repo is public.
 9. Exit codes are the integration surface: 0 go or go-with-notes, 1 hold or
    no-go, 2 inconclusive, 3 tool error. Do not add gating flags.
 

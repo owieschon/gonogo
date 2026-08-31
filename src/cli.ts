@@ -29,7 +29,7 @@ const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed ag
                 [--task <id>] [--workspace <id>] [--disclosure none|mentioned]
                 [--record] [--replay] [--out <dir>] [--max-diff-chars N] [--quiet]
 
-  gonogo eval [--k 3] [--replay] [--record] [--only <fixture>]
+  gonogo eval [--k 3] [--replay] [--record] [--only <fixture>] [--no-gate]
               [--judge claude] [--markdown]
 
   gonogo calibrate [--dir <path> ...]
@@ -228,6 +228,7 @@ async function cmdEval(args: Args): Promise<number> {
     replay: args.replay === true,
     record: args.record === true,
     only: str(args, "only"),
+    noGate: args["no-gate"] === true,
   });
   console.log("");
   console.log(args.markdown === true ? report.markdown : report.text);
@@ -237,6 +238,14 @@ async function cmdEval(args: Args): Promise<number> {
       `gonogo eval: ${report.hardFailures} run(s) produced no verdict at all. See above.`,
     );
     return EXIT.noGo;
+  }
+  if (report.gateFailures.length > 0) {
+    console.error(
+      `gonogo eval: judge quality fell below the recorded floor in ` +
+        `fixtures/thresholds.json:\n  ${report.gateFailures.join("\n  ")}\n` +
+        `Lower a floor deliberately, with the reason, or fix the regression.`,
+    );
+    process.exit(1);
   }
   if (!report.passedCoreChecks) {
     console.error("gonogo eval: core checks FAILED — the judge missed a case it must catch.");

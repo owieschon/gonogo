@@ -138,7 +138,11 @@ export function renderHtml(v: VerdictFile, opts: { title?: string } = {}): strin
   <h1>${esc(title)}</h1>
   <div class="mono" style="color:var(--mut)">${esc(p.repo)} · base <code>${esc(
     p.base.slice(0, 12),
-  )}</code> · head <code>${esc(p.head.slice(0, 12))}</code></div>
+  )}</code> · ${
+    p.head === p.base
+      ? `head is the same commit &mdash; the work being judged is an uncommitted worktree diff`
+      : `head <code>${esc(p.head.slice(0, 12))}</code>`
+  }</div>
 </header>
 
 ${

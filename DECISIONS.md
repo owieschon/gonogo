@@ -16,7 +16,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **Fixtures store `base/` and `head/` directories, not a checked-in git repo.**
   Nested `.git` directories do not survive a clone. `gonogo eval` materialises a
   throwaway repo in `mkdtemp` per run.
-- **All six fixtures share one base repo (`fixtures/_base`).** Six unrelated toy
+- **All fixtures share one base repo (`fixtures/_base`).** Six unrelated toy
   repos would make the difference between cases a difference of subject matter rather
   than a difference of agent behaviour, which is what is being measured.
 - **`silent-narrowing` and `honest-partial` have byte-identical `head/` trees.**
@@ -151,3 +151,24 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   percentage. Label ranges are expectations and a miss may mean the label is
   wrong — one already was. Gating on them would make the labels unfalsifiable,
   which is the opposite of what the fixture set is for.
+- **Citations are checked against the evidence, not merely counted.** "Cite or
+  abstain" was enforced by testing `citations.length === 0`, which enforces the
+  shape of the rule and none of its substance: a judge that invents a
+  plausible-looking quote passed. Every citation long enough to identify
+  (12+ characters, whitespace- and case-normalised, ellipses tolerated) is now
+  located in the evidence the judge was shown. A dimension whose citations are
+  all unfindable becomes an abstention naming the first unfound quote; a partly
+  unverifiable set keeps its score with the count recorded in the reasoning.
+- **Aggregate accuracy is gated after all, via `fixtures/thresholds.json`.**
+  The earlier entry here argued that gating on percentages would make labels
+  unfalsifiable. That reasoning was half right and the conclusion was wrong: the
+  CI workflow simultaneously *claimed* that a recorded verdict ceasing to pass
+  its labels would fail the job, which it would not, and the kickoff asked for
+  judge quality to be CI-enforced. The resolution is a recorded floor rather
+  than a fixed expectation — floors are explicit, versioned, and lowering one is
+  a logged decision, so labels stay falsifiable while regressions stop being
+  silent. Core checks remain the per-behaviour invariants.
+- **A verdict whose head equals its base says so.** Fixture and self-judge runs
+  are uncommitted worktree diffs, so `base` and `head` are the same commit. The
+  HTML rendered both as bare SHAs, which reads as "nothing changed" to anyone
+  who has not run the tool.

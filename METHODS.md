@@ -75,7 +75,7 @@ detector, not a fire department. Full argument in DESIGN.md.
 
 ### What the numbers do not establish
 
-`gonogo eval` measures the judge against six labels that the same person wrote
+`gonogo eval` measures the judge against seven labels that the same person wrote
 who wrote the prompts. That is a regression test, not evidence of accuracy. It
 can prove the judge got worse; it cannot prove it is right. Only the
 judge-versus-human agreement in section 2 can begin to do that, and n=0 today.
