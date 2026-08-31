@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715",
+    "sample": 1,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715"
+  },
+  "recorded_at": "2026-08-31T19:37:12.709Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5600,
+  "cost_usd": 0.031840600000000004,
+  "tokens_in": 37806,
+  "tokens_out": 98,
+  "text": "The agent tightened email validation in a signup form by replacing a naive `.includes(\"@\")` check with a proper regex requiring a domain with a dot, so addresses like `ada@localhost` are now rejected. The transcript's description matches the diff closely and contains no hidden instructions to the reviewer."
+}

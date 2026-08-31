@@ -30,12 +30,16 @@ RUBRIC.md:
 }
 ```
 
-Any dimension may be `"abstain"`. Then:
+Any dimension may be `"abstain"`. You may also record `review_minutes` (how long
+the review took) and free-text `notes`. Then:
 
     gonogo calibrate
 
-which reads every directory under `runs/` and `calibration/synthetic/` that
-holds both files.
+which reads `events.jsonl` plus every directory under `runs/` and
+`calibration/synthetic/` that holds both files, and reports agreement **per
+rater pair**. The judge is a rater like any other (`judge:claude-cli`), which is
+why adding a second judge later is data and not code. Replayed runs are excluded:
+serving the same judgement twice is not a second observation.
 
 ## synthetic/
 

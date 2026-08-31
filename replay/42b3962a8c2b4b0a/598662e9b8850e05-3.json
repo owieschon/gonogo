@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 3,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-08-31T19:36:37.786Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5580,
+  "cost_usd": 0.0117298,
+  "tokens_in": 38626,
+  "tokens_out": 141,
+  "text": "The agent was extending signup email validation to normalize Gmail-style addresses (case, dots, plus-aliases) so that alias variants are treated as the same account, and it built a companion `duplicates.js` utility to detect groups of raw addresses that collapse to the same normalized identity. The transcript's own admission that a test is still failing suggests the objective (likely full duplicate-account detection per some spec) was not yet fully achieved."
+}
