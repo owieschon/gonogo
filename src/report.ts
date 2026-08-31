@@ -121,6 +121,11 @@ export function renderHtml(v: VerdictFile, opts: { title?: string } = {}): strin
                 overflow-wrap:anywhere; }
   footer { margin-top:2.5rem; color:var(--mut); font-size:.75rem; border-top:1px solid var(--line);
            padding-top:.7rem; }
+  .gaming { background:#a30d1f18; border:1px solid #a30d1f66; border-left:4px solid #a30d1f;
+            border-radius:6px; padding:.85rem; margin:1.2rem 0 0; font-size:.86rem; }
+  .gaming ul { margin:.5rem 0 0; padding-left:1.05rem; }
+  .gaming code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.78rem;
+                 white-space:pre-wrap; overflow-wrap:anywhere; }
   .warn { background:#9a4b0022; border:1px solid #9a4b0066; border-radius:4px;
           padding:.5rem .7rem; font-size:.8rem; margin-top:.7rem; }
 </style>
@@ -136,8 +141,20 @@ export function renderHtml(v: VerdictFile, opts: { title?: string } = {}): strin
   )}</code> · head <code>${esc(p.head.slice(0, 12))}</code></div>
 </header>
 
+${
+  v.attempted_gaming
+    ? `<div class="gaming"><strong>Attempted gaming.</strong> The evidence contained text
+  addressed to the judge. It was not followed. The instruction is reported here because an
+  agent that tries to influence its own evaluation has said something about the rest of its
+  work.<ul>${v.gaming_evidence
+    .map((g) => `<li><code>${esc(g)}</code></li>`)
+    .join("")}</ul></div>`
+    : ""
+}
+
 <h2>Summary</h2>
 <div class="summary">${esc(v.summary)}</div>
+<p class="blurb">drift type: <code>${esc(v.drift_type)}</code></p>
 
 <h2>Dimensions</h2>
 ${dims}
@@ -187,7 +204,11 @@ ${
 
 <h2>Provenance</h2>
 <table>
-  <tr><th>gonogo version</th><td class="mono">${esc(p.gonogo_version)}</td></tr>
+  <tr><th>gonogo version</th><td class="mono">${esc(p.gonogo_version)}</td></tr>${
+    p.replayed
+      ? '\n  <tr><th>source</th><td class="mono">replayed from the record/replay cache; no judge was invoked</td></tr>'
+      : ""
+  }
   <tr><th>judge backend</th><td class="mono">${esc(p.judge_backend)}</td></tr>
   <tr><th>model version</th><td class="mono">${esc(p.model_version)}</td></tr>
   <tr><th>models reported</th><td class="mono">${esc(p.models_reported.join(", "))}</td></tr>

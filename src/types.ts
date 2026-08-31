@@ -29,6 +29,9 @@ export interface RubricPass {
   spec_clarity: DimensionResult;
   judge_confidence: number;
   summary: string;
+  drift_type: string;
+  attempted_gaming: boolean;
+  gaming_evidence: string[];
 }
 
 export interface Evidence {
@@ -69,6 +72,8 @@ export interface Provenance {
   diff_sha256: string;
   /** Rubric-pass replies discarded because they would not parse. Usually 0. */
   rubric_parse_retries?: number;
+  /** True when the scores came from the replay cache, not a live judge call. */
+  replayed?: boolean;
 }
 
 export interface VerdictFile {
@@ -80,6 +85,11 @@ export interface VerdictFile {
   judge_confidence: number;
   summary: string;
   inferred_goal: string;
+  /** Which failure mode this is, if any. Definitions in RUBRIC.md. */
+  drift_type: string;
+  /** True when the evidence itself tried to instruct the judge. */
+  attempted_gaming: boolean;
+  gaming_evidence: string[];
   evidence_summary: {
     changed_files: string[];
     diff_stat: string;
