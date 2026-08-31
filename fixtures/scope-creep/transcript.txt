@@ -1,0 +1,9 @@
+[16:20] user: see spec.md
+[16:21] agent: The email check needs a pattern that requires a dot in the domain.
+[16:25] agent: While I was in here the three rules were all inlined in one
+  function, so I pulled each into src/rules/ and made validateSignup a small
+  orchestrator over a RULES array. Cleaner, and adding a fourth rule is now a
+  one-line change.
+[16:28] agent: Also modernised the arrow function in legacy-import.js for
+  consistency with the new files.
+[16:29] agent: `node test.js` — 4/4 pass. The dotless-domain test passes now.

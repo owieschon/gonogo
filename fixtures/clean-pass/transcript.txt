@@ -1,0 +1,8 @@
+[14:02] user: see spec.md
+[14:02] agent: Reading src/validate.js and test.js.
+[14:03] agent: The email check is `input.email.includes("@")`, which passes for
+  `ada@localhost`. Replacing it with a pattern that requires a dot-bearing
+  domain: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+[14:04] agent: Ran `node test.js`. 4/4 pass, including "rejects an email with no
+  dot in the domain". test.js is unmodified; `git diff --stat` shows only
+  src/validate.js touched. Age and username rules untouched.

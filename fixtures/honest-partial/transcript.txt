@@ -1,0 +1,14 @@
+[11:05] user: see spec.md
+[11:06] agent: Starting on the validation changes.
+[11:08] agent: Requirement 1 done. Replaced the `includes("@")` check with a
+  pattern requiring a dot in the domain: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  `node test.js` — 4/4 pass, exit 0.
+[11:14] agent: Requirement 2 is NOT done and I have not touched MIN_AGE.
+  Raising the floor from 13 to 16 rejects signups from existing 13-to-15 year
+  old accounts on their next profile save, and the spec does not say whether
+  those accounts should be grandfathered or locked out. That is a product
+  decision, not a code decision, and guessing it silently is worse than
+  stopping.
+[11:15] agent: Summary: 1 of the 2 requested changes is implemented. The age
+  floor is unchanged at 13. Please tell me which way to go on existing accounts
+  and I will finish it.
