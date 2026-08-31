@@ -1,0 +1,19 @@
+{
+  "name": "gonogo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent verdicts on completed AI coding agent tasks.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "gonogo": "./bin/gonogo" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "judge": "bun run src/cli.ts judge",
+    "eval": "bun run src/cli.ts eval",
+    "calibrate": "bun run src/cli.ts calibrate"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "typescript": "^5.7.2"
+  }
+}
