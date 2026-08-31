@@ -39,6 +39,23 @@ function scoreColor(d: DimensionResult): string {
   return "#a30d1f";
 }
 
+function sourceLabel(p: VerdictFile["provenance"]): string {
+  const sources = p.pass_sources;
+  if (!sources) {
+    return p.replayed
+      ? "replayed from the record/replay cache; no judge was invoked"
+      : "blind pass: live judge; rubric pass: live judge";
+  }
+  if (sources.blind === "cache" && sources.rubric === "cache") {
+    return "blind pass: cache; rubric pass: cache — no judge was invoked";
+  }
+  if (sources.blind === "live" && sources.rubric === "live") {
+    return "blind pass: live judge; rubric pass: live judge";
+  }
+  return `partial cache — blind pass: ${sources.blind === "cache" ? "cache" : "live judge"}; ` +
+    `rubric pass: ${sources.rubric === "cache" ? "cache" : "live judge"}`;
+}
+
 function dimensionBlock(name: string, d: DimensionResult, blurb: string): string {
   const cites = isAbstain(d)
     ? (d.citations ?? [])
@@ -208,11 +225,11 @@ ${
 
 <h2>Provenance</h2>
 <table>
-  <tr><th>gonogo version</th><td class="mono">${esc(p.gonogo_version)}</td></tr>${
-    p.replayed
-      ? '\n  <tr><th>source</th><td class="mono">replayed from the record/replay cache; no judge was invoked</td></tr>'
-      : ""
-  }
+  <tr><th>gonogo version</th><td class="mono">${esc(p.gonogo_version)}</td></tr>
+  <tr><th>source</th><td class="mono">${esc(sourceLabel(p))}</td></tr>
+  <tr><th>run id</th><td class="mono">${esc(v.run_id ?? "—")}</td></tr>
+  <tr><th>task id</th><td class="mono">${esc(v.task_id ?? "—")}</td></tr>
+  <tr><th>workspace id</th><td class="mono">${esc(v.workspace_id ?? "—")}</td></tr>
   <tr><th>judge backend</th><td class="mono">${esc(p.judge_backend)}</td></tr>
   <tr><th>model version</th><td class="mono">${esc(p.model_version)}</td></tr>
   <tr><th>models reported</th><td class="mono">${esc(p.models_reported.join(", "))}</td></tr>

@@ -2,6 +2,7 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -12,7 +13,9 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Run 01's instrument anchor was verified on this runtime. Upgrade it
+          # deliberately, with the replay evaluation in the same change.
+          bun-version: 1.4.0
 
       - run: bun install --frozen-lockfile
 
@@ -36,12 +39,9 @@ jobs:
       #
       # What this does catch: a change to labels.json, to the scoring code, to
       # the verdict arithmetic, or to the eval maths that would make a recorded
-      # verdict stop passing its labels. Three things fail the job — a run that
-      # produces no verdict, a failed core check, and any aggregate accuracy
-      # falling below the floor recorded in fixtures/thresholds.json. Until that
-      # threshold gate existed, dimension, verdict and drift accuracy could all
-      # regress while this step stayed green, and the paragraph you are reading
-      # claimed otherwise.
+      # verdict stop passing its labels. The command fails if any core check,
+      # verdict/drift floor, or per-dimension accuracy floor regresses from the
+      # verified 0.1.1 replay baseline printed in its quality-gate receipt.
       #
       # What this does NOT catch: a regression in prompts/*.md. Replay tests the
       # pipeline, not the model. The cache is keyed on the prompt hash, so an

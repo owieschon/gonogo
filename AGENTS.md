@@ -16,13 +16,13 @@ tool, not its operator.
     bun install                       # once
     bunx tsc --noEmit                 # typecheck; must be clean before you push
     ./bin/gonogo judge --spec <f> --repo <p> --base <ref>
-    ./bin/gonogo eval --k 3           # live judge over every fixture
+    ./bin/gonogo eval --k 3           # live judge over all seven fixtures
     ./bin/gonogo eval --k 1 --only merged-but-wrong    # fast loop while iterating
     ./bin/gonogo eval --replay        # serve recorded judge output, no judge calls
     ./bin/gonogo eval --k 3 --record  # live run, recording output for CI
-    ./bin/gonogo outcome --task t1 --pr <url> --state merged
+    ./bin/gonogo outcome --task t1 --run <judge-run> --pr <url> --state merged
     bun test                          # invariant tests; must pass before you push
-    ./bin/gonogo calibrate            # judge-vs-human agreement
+    ./bin/gonogo calibrate --repo <p> # judge-vs-human agreement for target repo
     ./scripts/self-judge.sh --spec SPEC.md             # judge this repo's own diff
 
 `bun` and the `claude` CLI must both be on PATH for a live run. `--replay` needs
@@ -45,8 +45,8 @@ neither, which is why CI uses it.
     replay/             recorded judge output, content-addressed
     events.jsonl        append-only event log; eval and calibrate read it
     audits/             self-judge verdicts on this repo's own changes
-    calibration/        the human-verdict schema and synthetic demo data
-    runs/               gitignored output of `gonogo judge`
+    calibration/        human review records plus the synthetic demo data
+    runs/               gitignored output of `gonogo judge`; excluded from later evidence
 
 ## Invariants
 
@@ -87,19 +87,30 @@ outcome. `schema_version` is 2; `src/events.ts` migrates v1 on read.
   the same `run_id`. Agreement is computed per rater pair, which is why panel
   mode will be data and not code.
 - Outcome events (`kind: outcome`) record what happened to the work:
-  `gonogo outcome --task <id> --pr <url> --state merged`. Recorded by hand.
+  `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`.
+  A supplied run must resolve to a real judge event carrying the same task id.
+  Recorded by hand.
+
+`calibrate` also discovers `human.json` recursively under a target repository's
+`runs/` and `calibration/`. A standalone rating is printed with its notes but
+never counted as agreement; only a same-run, same-evidence pair is calibration.
 
 Never rewrite history in the log. Never add a field without bumping
-`EVENT_SCHEMA_VERSION` and extending `migrateEvent`. Zero telemetry: nothing in
-this repository sends anything anywhere.
+`EVENT_SCHEMA_VERSION` and extending `migrateEvent`. The event log emits zero
+telemetry. A live judge call still sends its documented evidence packet to the
+configured judge CLI; README.md states that boundary for operators.
 
 ## Record and replay
 
-`--record` writes raw judge output to `replay/`, keyed by prompt hash, evidence
-hash and sample index. `--replay` serves it back and invokes no judge. Replay
-tests the pipeline, not the model: an edited prompt changes the key, so replay
-misses loudly rather than serving stale output — that is a prompt to re-record,
-not a verdict on the new prompt.
+`--record` writes raw judge output to `replay/`, keyed by backend, instrument,
+requested model, prompt hash, evidence hash and sample index. Existing receipts
+are immutable; recording reuses an exact hit and writes only misses. `--replay`
+serves the receipt back and invokes no judge. Replay tests the pipeline, not the
+model: an edited prompt changes the key, so replay misses loudly rather than
+serving stale output — that is a prompt to re-record, not a verdict on the new
+prompt. If record-on-miss combines one cached pass with one live pass, the run is
+marked replayed and excluded from calibration; usage counts only the live work
+performed in that run.
 
 ## Rules
 
@@ -109,27 +120,22 @@ not a verdict on the new prompt.
 2. **No prompt text in source files.** Every judge prompt lives in `prompts/*.md`.
    Their sha256 goes into each verdict's provenance, so an inline string silently
    breaks reproducibility.
-3. **Judge quality is gated, not just reported.** `gonogo eval` exits non-zero on
-   a failed core check, a run that produced no verdict, or any aggregate accuracy
-   below `fixtures/thresholds.json`. Lowering a floor is a deliberate act: do it
-   in the same commit as the reason, with a line in EVAL_LOG.md, exactly like a
-   prompt change. `--no-gate` reports without failing, for exploration only.
-4. **Run `gonogo eval` before proposing a prompt change, and again after.**
+3. **Run `gonogo eval` before proposing a prompt change, and again after.**
    A prompt change is only kept if the numbers improve or hold. Record both
    numbers as one line in `EVAL_LOG.md` — including changes you tried and
    reverted, which are the useful half of that file.
-5. **Do not tune a prompt against one fixture.** Six is already a small set;
+4. **Do not tune a prompt against one fixture.** Seven is already a small set;
    fitting it exactly is how you get a judge that works on nothing else. If you
    want a new behaviour pinned, add a fixture with a `core_check`.
 5. **Do not hand-edit `replay/` or `events.jsonl`.** The cache is recorded judge
    output; regenerate it with `gonogo eval --k 3 --record` against a live judge
    and say so in the commit message. The log is append-only.
-7. **Self-judge substantive changes.** Run `scripts/self-judge.sh` before merge
+6. **Self-judge substantive changes.** Run `scripts/self-judge.sh` before merge
    and commit the verdict under `audits/`. Commit the verdict you got, not the
    one you wanted.
-8. Conventional commits, small logical units. Commit messages are read by
+7. Conventional commits, small logical units. Commit messages are read by
    strangers; so is every fixture and every prompt.
-9. No secrets, no employer or client references, anywhere. This repo is public.
+8. No secrets, no employer or client references, anywhere. This repo is public.
 9. Exit codes are the integration surface: 0 go or go-with-notes, 1 hold or
    no-go, 2 inconclusive, 3 tool error. Do not add gating flags.
 

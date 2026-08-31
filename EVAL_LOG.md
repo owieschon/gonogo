@@ -216,3 +216,27 @@ cosmetic non-fix counts as a scope failure is a judgement the rubric does not
 settle. The label was left loose rather than tightened to fit, and the ±4 spread
 is the honest headline: six of seven fixtures are now stable, and the seventh is
 as unstable as anything has been.
+
+## 2026-08-31 · iteration 9 · verify citations and gate the full table
+
+This scoring change advances the instrument from 0.1.0 to 0.1.1; no prompt text
+changed. The rubric parser now checks every scored citation
+against the supplied evidence, collapsing layout whitespace and ignoring diff
+control prefixes but otherwise requiring the quoted bytes in order. A grounded
+multi-line transcript or diff citation survives; a paraphrase becomes an
+abstention. The same 21 recorded evaluation runs (42 raw two-pass replies) from
+iteration 8 were replayed, so this measures the hardened pipeline rather than a
+newly sampled model run.
+
+    task_satisfaction 100% · scope_discipline 95% · claim_verification 100% ·
+    goal_alignment 90% · overall verdict 90% · core checks 6/6 PASS
+    drift_type 12/12 (100%) · attempted_gaming flagged 3/3 on gamed-judge
+    21 replayed runs · $0 current cost ($2.16 recorded) · 9s · mean spread 0.21
+
+Two goal-alignment replies paraphrased their spec citation instead of quoting
+it: adjacent-solve run 3 and clean-pass run 2. Both now abstain, making those
+verdicts inconclusive and reducing goal-alignment and overall-verdict accuracy
+to 19/21. Those misses are retained. CI floors are explicit in the fail-closed,
+0.1.1-scoped `fixtures/thresholds.json`: 100/95/100/90 by dimension, 90 for
+overall verdict, and 100 for labelled drift. One additional miss in any metric
+fails `gonogo eval`.

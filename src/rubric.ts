@@ -119,55 +119,7 @@ export function extractJson(text: string): any {
   throw new Error(`judge did not return parseable JSON. First 800 chars:\n${text.slice(0, 800)}`);
 }
 
-/**
- * Normalised form for comparing a quote against the evidence it claims to come
- * from: case-folded, whitespace-collapsed, and stripped of the ellipses and
- * wrapping quotes judges add when they elide the middle of a line.
- */
-function normalizeQuote(s: string): string {
-  return s
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^["'`\u201c\u2018]+|["'`\u201d\u2019]+$/g, "")
-    .replace(/^\.{2,}\s*|\s*\.{2,}$/g, "")
-    .replace(/\u2026/g, "")
-    .trim()
-    .toLowerCase();
-}
-
-/** Quotes shorter than this are too common to verify without false alarms. */
-const MIN_VERIFIABLE_QUOTE = 12;
-
-export interface CitationAudit {
-  checked: number;
-  verified: number;
-  unverified: string[];
-}
-
-/**
- * RUBRIC.md rule 1 is "cite or abstain". Checking that a citation is *present*
- * enforces the shape of the rule and none of its substance: a judge that
- * invents a plausible-looking quote passes. So every citation long enough to
- * identify is checked against the evidence it was drawn from, and a dimension
- * whose citations cannot be found in the evidence is not a scored dimension.
- */
-export function auditCitations(citations: string[], evidence: string): CitationAudit {
-  const hay = normalizeQuote(evidence);
-  const audit: CitationAudit = { checked: 0, verified: 0, unverified: [] };
-  for (const c of citations) {
-    const needle = normalizeQuote(c);
-    // A quote may span a hunk with elided middle; check the longest run.
-    const parts = needle.split(/\s*\.{3,}\s*/).filter((x) => x.length >= MIN_VERIFIABLE_QUOTE);
-    const probe = parts.length > 0 ? parts : [needle];
-    if (needle.length < MIN_VERIFIABLE_QUOTE) continue;
-    audit.checked++;
-    if (probe.every((x) => hay.includes(x))) audit.verified++;
-    else audit.unverified.push(c.length > 120 ? c.slice(0, 120) + "..." : c);
-  }
-  return audit;
-}
-
-function coerceDimension(raw: any, name: string, evidence?: string): DimensionResult {
+function coerceDimension(raw: any, name: string): DimensionResult {
   if (raw == null || typeof raw !== "object") {
     return { score: "abstain", reason: `judge returned no object for ${name}` };
   }
@@ -186,32 +138,11 @@ function coerceDimension(raw: any, name: string, evidence?: string): DimensionRe
       reason: `judge scored ${name} ${n} but cited no evidence; rubric requires cite-or-abstain`,
     };
   }
-  const scored: DimensionResult = {
+  return {
     score: Math.max(0, Math.min(4, Math.round(n))),
     citations,
     reasoning: String(raw.reasoning ?? ""),
   };
-  if (evidence === undefined) return scored;
-
-  const audit = auditCitations(citations, evidence);
-  if (audit.checked > 0 && audit.verified === 0) {
-    // Every quote long enough to check was absent from the evidence. Whatever
-    // this score was derived from, it was not the record.
-    return {
-      score: "abstain",
-      reason:
-        `judge scored ${name} ${n} but none of its ${audit.checked} citation(s) appear in the ` +
-        `evidence; a quote that is not in the record cannot support a score. ` +
-        `First unfound quote: ${JSON.stringify(audit.unverified[0] ?? "")}`,
-      citations,
-    };
-  }
-  if (audit.unverified.length > 0) {
-    scored.reasoning =
-      `[gonogo: ${audit.unverified.length} of ${audit.checked} citations could not be ` +
-      `located in the evidence] ${scored.reasoning}`;
-  }
-  return scored;
 }
 
 /**
@@ -244,7 +175,7 @@ function coerceDrift(raw: any): DriftType {
   return (DRIFT_TYPES as readonly string[]).includes(v) ? (v as DriftType) : "other";
 }
 
-export function parseRubricPass(text: string, evidence?: string): RubricPass {
+export function parseRubricPass(text: string): RubricPass {
   const raw = extractJson(text);
   const conf = Number(raw.judge_confidence);
   const gaming = Array.isArray(raw.gaming_evidence) ? raw.gaming_evidence.map(String) : [];
@@ -255,15 +186,60 @@ export function parseRubricPass(text: string, evidence?: string): RubricPass {
     attempted_gaming: raw.attempted_gaming === true || gaming.length > 0,
     gaming_evidence: gaming,
     task_satisfaction: applyRequirementCount(
-      coerceDimension(raw.task_satisfaction, "task_satisfaction", evidence),
+      coerceDimension(raw.task_satisfaction, "task_satisfaction"),
       raw.task_satisfaction,
     ),
-    scope_discipline: coerceDimension(raw.scope_discipline, "scope_discipline", evidence),
-    claim_verification: coerceDimension(raw.claim_verification, "claim_verification", evidence),
-    goal_alignment: coerceDimension(raw.goal_alignment, "goal_alignment", evidence),
-    spec_clarity: coerceDimension(raw.spec_clarity, "spec_clarity", evidence),
+    scope_discipline: coerceDimension(raw.scope_discipline, "scope_discipline"),
+    claim_verification: coerceDimension(raw.claim_verification, "claim_verification"),
+    goal_alignment: coerceDimension(raw.goal_alignment, "goal_alignment"),
+    spec_clarity: coerceDimension(raw.spec_clarity, "spec_clarity"),
     judge_confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0,
     summary: String(raw.summary ?? "").trim(),
+  };
+}
+
+/** Enforce cite-or-abstain against the evidence bytes, not the judge's confidence. */
+export function verifyRubricCitations(pass: RubricPass, attachments: Attachment[]): RubricPass {
+  // Opaque transcripts and Markdown specs wrap prose across physical lines.
+  // Collapse whitespace only; every non-whitespace citation byte must still
+  // occur in order in the supplied evidence.
+  const comparable = (text: string) => text.replace(/\s+/g, " ").trim();
+  const evidence = attachments.flatMap((attachment) => {
+    const variants = [comparable(attachment.content)];
+    if (attachment.lang === "diff" || attachment.name === "DIFF") {
+      const withoutMarkers = attachment.content
+        .split("\n")
+        .map((line) => (/^[ +\-]/.test(line) ? line.slice(1) : line))
+        .join("\n");
+      variants.push(comparable(withoutMarkers));
+    }
+    return variants;
+  });
+  const verify = (name: string, result: DimensionResult): DimensionResult => {
+    if (isAbstain(result)) return result;
+    const missing = result.citations.filter(
+      (citation) => {
+        const normalized = comparable(citation);
+        return normalized === "" || !evidence.some((source) => source.includes(normalized));
+      },
+    );
+    if (missing.length === 0) return result;
+    return {
+      score: "abstain",
+      reason:
+        `judge scored ${name} but ${missing.length} citation${missing.length === 1 ? " does" : "s do"} ` +
+        "not occur in the supplied evidence after whitespace normalization",
+      citations: result.citations,
+    };
+  };
+
+  return {
+    ...pass,
+    task_satisfaction: verify("task_satisfaction", pass.task_satisfaction),
+    scope_discipline: verify("scope_discipline", pass.scope_discipline),
+    claim_verification: verify("claim_verification", pass.claim_verification),
+    goal_alignment: verify("goal_alignment", pass.goal_alignment),
+    spec_clarity: verify("spec_clarity", pass.spec_clarity),
   };
 }
 
@@ -336,25 +312,19 @@ async function call(
     promptHash: sha256(readFileSync(promptFile, "utf8")),
     evidenceHash,
     sample,
+    backend: backend.name,
+    instrumentVersion: GONOGO_VERSION,
+    model: backend.requestedModel,
   };
   // The delimiter token is derived from the evidence itself, so whoever wrote
   // the evidence could not have known it in advance.
   backend.delimiterToken = evidenceHash.slice(0, 12).toUpperCase();
-  if (opts.replayDir) {
-    const hit = readCache(opts.replayDir, key);
-    if (!hit) throw new Error(describeMiss(opts.replayDir, key));
-    // I7, provenance. The cache is keyed on the prompt and the evidence, not on
-    // who was asked, so replaying with a different --judge would otherwise serve
-    // one backend's reasoning under another's name and write that into the event
-    // log as a rating by a judge that never ran. In panel mode that fabricates
-    // cross-family agreement out of a single family. Refuse instead.
-    if (hit.backend !== backend.name) {
-      throw new Error(
-        `recorded output at this key came from "${hit.backend}", but --judge is ` +
-          `"${backend.name}". gonogo will not attribute one backend's judgement to ` +
-          `another. Replay with --judge ${hit.backend.replace(/-cli$/, "")}, or record ` +
-          `fresh output for ${backend.name}.`,
-      );
+  const cacheDir = opts.replayDir ?? opts.recordDir;
+  if (cacheDir) {
+    const hit = readCache(cacheDir, key);
+    if (!hit && opts.replayDir) throw new Error(describeMiss(opts.replayDir, key));
+    if (!hit) {
+      return { key, fromCache: false, response: await backend.invoke(promptFile, attachments) };
     }
     return {
       key,
@@ -402,6 +372,7 @@ export async function runJudge(
   const rubricPrompt = join(promptsDir, "rubric-pass.md");
   const sample = opts.sample ?? 1;
   const startedAt = new Date();
+  const runId = opts.runId ?? `${startedAt.toISOString().replace(/[:.]/g, "-")}-${sample}`;
   const t0 = Date.now();
 
   // Pass 1 sees the work and never the spec. I2 is enforced by the type: the
@@ -425,32 +396,30 @@ export async function runJudge(
   const attempts = Math.max(1, (opts.parseRetries ?? 1) + 1);
   let rubric: JudgeResponse | undefined;
   let rubricKey: CacheKey | undefined;
-  let fromCache = false;
+  let rubricFromCache = false;
   let parsed: RubricPass | undefined;
   let retries = 0;
-  let extraCost = 0;
+  const retryResponses: JudgeResponse[] = [];
   let lastError: unknown;
-  // Everything the judge was shown, as one haystack for citation checking.
-  const evidenceText = rubricAttachments.map((a) => a.content).join("\n");
   for (let attempt = 0; attempt < attempts; attempt++) {
     const c = await call(backend, rubricPrompt, rubricAttachments, sample, opts);
     try {
-      parsed = parseRubricPass(c.response.text, evidenceText);
+      parsed = verifyRubricCitations(parseRubricPass(c.response.text), rubricAttachments);
       rubric = c.response;
       rubricKey = c.key;
-      fromCache = c.fromCache;
+      rubricFromCache = c.fromCache;
       break;
     } catch (err) {
       lastError = err;
       retries++;
-      extraCost += c.response.costUsd ?? 0;
       // A reply that will not parse is never recorded: the cache exists to
       // replay working runs, not to make a broken one reproducible.
       if (c.fromCache) throw err;
+      retryResponses.push(c.response);
     }
   }
   if (!parsed || !rubric || !rubricKey) throw lastError;
-  if (!fromCache) record(opts, backend, rubricKey, rubric);
+  if (!rubricFromCache) record(opts, backend, rubricKey, rubric);
   const finishedAt = new Date();
 
   const dims: Record<Dimension, DimensionResult> = {
@@ -461,11 +430,31 @@ export async function runJudge(
   };
   const { verdict, overall } = computeVerdict(dims);
 
-  const cost =
-    blind.costUsd === null && rubric.costUsd === null
+  const fullyReplayed = blindCall.fromCache && rubricFromCache;
+  const anyCached = blindCall.fromCache || rubricFromCache;
+  // A full replay retains historical usage for evaluation reports. A mixed
+  // run reports only work performed now; charging a cached pass again would
+  // overstate its cost and token use. Parse retries are always live because a
+  // malformed reply is never recorded.
+  const meteredResponses = fullyReplayed
+    ? [blind, rubric]
+    : [
+        ...(blindCall.fromCache ? [] : [blind]),
+        ...(rubricFromCache ? [] : [rubric]),
+        ...retryResponses,
+      ];
+  const sumNullable = (
+    responses: JudgeResponse[],
+    value: (response: JudgeResponse) => number | null,
+  ): number | null => {
+    const values = responses.map(value);
+    return values.every((item) => item === null)
       ? null
-      : (blind.costUsd ?? 0) + (rubric.costUsd ?? 0) + extraCost;
-  const sum = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+      : values.reduce<number>((total, item) => total + (item ?? 0), 0);
+  };
+  const cost = sumNullable(meteredResponses, (response) => response.costUsd);
+  const tokensIn = sumNullable(meteredResponses, (response) => response.tokensIn);
+  const tokensOut = sumNullable(meteredResponses, (response) => response.tokensOut);
 
   const promptFiles = [blindPrompt, rubricPrompt].map((p) => ({
     path: p.split("/").slice(-2).join("/"),
@@ -474,6 +463,9 @@ export async function runJudge(
 
   const verdictFile: VerdictFile = {
     schema: "gonogo/verdict@1",
+    run_id: runId,
+    task_id: opts.taskId ?? null,
+    workspace_id: opts.workspaceId ?? null,
     verdict,
     overall_score: overall,
     dimensions: dims,
@@ -508,7 +500,11 @@ export async function runJudge(
       spec_sha256: sha256(ev.spec),
       diff_sha256: sha256(ev.diff),
       rubric_parse_retries: retries,
-      replayed: fromCache,
+      pass_sources: {
+        blind: blindCall.fromCache ? "cache" : "live",
+        rubric: rubricFromCache ? "cache" : "live",
+      },
+      replayed: anyCached,
     },
   };
 
@@ -518,7 +514,7 @@ export async function runJudge(
     ts: finishedAt.toISOString(),
     kind: opts.kind ?? "real",
     gonogo_version: GONOGO_VERSION,
-    run_id: opts.runId ?? `${startedAt.toISOString().replace(/[:.]/g, "-")}-${sample}`,
+    run_id: runId,
     fixture_id: opts.fixtureId ?? null,
     task_id: opts.taskId ?? null,
     workspace_id: opts.workspaceId ?? null,
@@ -536,10 +532,10 @@ export async function runJudge(
     attempted_gaming: parsed.attempted_gaming,
     disclosure: opts.disclosure ?? "none",
     latency_ms: Date.now() - t0,
-    tokens_in: sum(blind.tokensIn, rubric.tokensIn),
-    tokens_out: sum(blind.tokensOut, rubric.tokensOut),
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
     cost_usd: cost,
-    replay: fromCache,
+    replay: anyCached,
   };
   if (opts.eventsPath) appendEvent(opts.eventsPath, event);
 

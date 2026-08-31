@@ -1,6 +1,6 @@
 /** Evidence collection: everything the judge is allowed to look at. */
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import type { Evidence, TestResult } from "./types.ts";
 
@@ -25,18 +25,51 @@ export function git(repo: string, args: string[]): string {
  * Untracked files are part of the agent's work but invisible to `git diff`.
  * Synthesise a diff for them so the judge sees new files it would otherwise miss.
  */
-function untrackedDiff(repo: string): string {
-  const listing = git(repo, ["ls-files", "--others", "--exclude-standard"]);
-  const files = listing.split("\n").map((f) => f.trim()).filter(Boolean);
+function nulSeparatedGit(repo: string, args: string[]): string[] {
+  const output = git(repo, [...args, "-z"]);
+  if (output === "") return [];
+  const files = output.split("\0");
+  if (files.at(-1) === "") files.pop();
+  return files;
+}
+
+function noIndexDiff(repo: string, args: string[]): string {
+  const r = spawnSync("git", ["-C", repo, "diff", "--no-index", ...args], {
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  // `git diff --no-index` uses 1 for an ordinary difference.
+  if (r.status !== 0 && r.status !== 1) {
+    throw new Error(
+      `git diff --no-index ${args.join(" ")} failed in ${repo} (${r.status}): ${r.stderr?.trim()}`,
+    );
+  }
+  return r.stdout ?? "";
+}
+
+function untrackedDiff(repo: string, files: string[]): string {
   const parts: string[] = [];
   for (const f of files) {
-    const r = spawnSync("git", ["-C", repo, "diff", "--no-index", "--", "/dev/null", f], {
-      encoding: "utf8",
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    if (r.stdout) parts.push(r.stdout);
+    const diff = noIndexDiff(repo, ["--", "/dev/null", f]);
+    if (diff) parts.push(diff);
   }
   return parts.join("");
+}
+
+function repoRelativeRoots(repo: string, roots: string[]): string[] {
+  return [...new Set(roots.map((root) => {
+    const absolute = isAbsolute(root) ? resolve(root) : resolve(repo, root);
+    const path = relative(repo, absolute);
+    if (path === "" || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
+      throw new Error(`untracked exclusion root must be inside ${repo}: ${root}`);
+    }
+    // Git always reports paths with forward slashes, including on Windows.
+    return path.split(sep).join("/").replace(/\/$/, "");
+  }))];
+}
+
+function outsideRoots(path: string, roots: string[]): boolean {
+  return !roots.some((root) => path === root || path.startsWith(`${root}/`));
 }
 
 function truncate(s: string, max: number): { text: string; truncated: boolean } {
@@ -73,6 +106,12 @@ export interface CollectOptions {
   testCmd?: string;
   /** Raise for a large change; the judge sees eliding as a caveat on the verdict. */
   maxDiffChars?: number;
+  /**
+   * Repo-relative or absolute tool-owned directories to omit from untracked
+   * evidence. This prevents a later run from judging artifacts of an earlier
+   * run while preserving deliberately tracked fixture data.
+   */
+  excludeUntrackedRoots?: string[];
 }
 
 export function collectEvidence(opts: CollectOptions): Evidence {
@@ -90,21 +129,19 @@ export function collectEvidence(opts: CollectOptions): Evidence {
     );
   }
   const head = git(repo, ["rev-parse", "HEAD"]).trim();
+  const excludedRoots = repoRelativeRoots(repo, opts.excludeUntrackedRoots ?? []);
+  const untrackedFiles = nulSeparatedGit(repo, [
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+  ]).filter((path) => outsideRoots(path, excludedRoots));
 
   // Worktree-vs-base, so committed and uncommitted agent work are both seen.
   const tracked = git(repo, ["diff", baseSha]);
-  const rawDiff = tracked + untrackedDiff(repo);
+  const rawDiff = tracked + untrackedDiff(repo, untrackedFiles);
   const diffStat = git(repo, ["diff", "--stat", baseSha]).trim();
-  const changedFiles = git(repo, ["diff", "--name-only", baseSha])
-    .split("\n")
-    .map((f) => f.trim())
-    .filter(Boolean)
-    .concat(
-      git(repo, ["ls-files", "--others", "--exclude-standard"])
-        .split("\n")
-        .map((f) => f.trim())
-        .filter(Boolean),
-    );
+  const changedFiles = nulSeparatedGit(repo, ["diff", "--name-only", baseSha])
+    .concat(untrackedFiles);
 
   // RUBRIC.md counts commit messages as claims the agent made about its work,
   // alongside the transcript. Collect them or claim_verification is judging

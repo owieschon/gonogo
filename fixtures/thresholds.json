@@ -1,11 +1,13 @@
 {
-  "note": "The recorded floor for judge quality, enforced by `gonogo eval` and therefore by CI. Core checks are invariants that must never fail; these are the aggregate numbers that must never silently drift. Lowering any value here is a deliberate act and belongs in the same commit as the reason, with a line in EVAL_LOG.md — exactly like a prompt change. Raising one after a genuine improvement is encouraged. Values are fractions of runs, matched against the replay set the CI job scores.",
+  "schema": "gonogo/eval-thresholds@1",
+  "gonogo_version": "0.1.1",
+  "note": "Fail-closed floors for the citation-hardened 0.1.1 replay baseline. Changes require a matching EVAL_LOG.md receipt.",
   "min_dimension_accuracy": {
     "task_satisfaction": 1.0,
     "scope_discipline": 0.95,
     "claim_verification": 1.0,
-    "goal_alignment": 1.0
+    "goal_alignment": 0.90
   },
-  "min_verdict_accuracy": 1.0,
+  "min_verdict_accuracy": 0.90,
   "min_drift_accuracy": 1.0
 }

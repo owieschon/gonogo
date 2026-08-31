@@ -17,34 +17,93 @@ import { GONOGO_VERSION } from "./version.ts";
 
 type Scores = Record<string, number | "abstain">;
 
+function score(value: unknown, label: string): number | "abstain" {
+  if (value === "abstain") return value;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 4) {
+    throw new Error(`${label} must be an integer from 0 to 4 or "abstain".`);
+  }
+  return value;
+}
+
+function exactDimensionKeys(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must contain exactly ${DIMENSIONS.join(", ")}.`);
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expected = [...DIMENSIONS].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new Error(`${label} must contain exactly ${DIMENSIONS.join(", ")}.`);
+  }
+  return record;
+}
+
+function humanScores(value: unknown, label: string): Scores {
+  const dimensions = exactDimensionKeys(value, label);
+  return Object.fromEntries(
+    DIMENSIONS.map((dimension) => [dimension, score(dimensions[dimension], `${label}.${dimension}`)]),
+  );
+}
+
+function verdictScores(value: unknown, label: string): Scores {
+  const dimensions = exactDimensionKeys(value, label);
+  return Object.fromEntries(
+    DIMENSIONS.map((dimension) => {
+      const result = dimensions[dimension];
+      if (result === null || typeof result !== "object" || Array.isArray(result)) {
+        throw new Error(`${label}.${dimension} must be a dimension result.`);
+      }
+      return [
+        dimension,
+        score((result as Record<string, unknown>).score, `${label}.${dimension}.score`),
+      ];
+    }),
+  );
+}
+
 interface Rating {
   runId: string;
   raterId: string;
   scores: Scores;
   synthetic: boolean;
-  /**
-   * Which prompt version produced (or was compared against) this rating.
-   * METHODS.md: a prompt change makes a new instrument, and runs from
-   * different instruments are never pooled silently into one figure.
-   */
-  promptSignature?: string | null;
+  /** Present only for judge ratings; humans inherit it through the comparison. */
+  instrument?: InstrumentIdentity;
   notes?: string | null;
 }
 
-/** A short, stable label for one set of prompt files. */
-export function promptSignatureOf(
-  files: { path: string; sha256: string }[] | Record<string, string> | undefined,
-): string | null {
-  if (!files) return null;
-  const pairs = Array.isArray(files)
-    ? files.map((f) => [f.path, f.sha256] as const)
-    : Object.entries(files);
-  if (pairs.length === 0) return null;
-  return pairs
-    .slice()
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([path, sha]) => `${path.split("/").pop()}@${sha.slice(0, 8)}`)
-    .join(" ");
+interface InstrumentIdentity {
+  gonogoVersion: string;
+  backend: string;
+  model: string;
+  promptHashes: [string, string][];
+}
+
+function instrument(
+  gonogoVersion: string,
+  backend: string,
+  model: string,
+  promptHashes: Record<string, string> | { path: string; sha256: string }[],
+): InstrumentIdentity {
+  const entries = Array.isArray(promptHashes)
+    ? promptHashes.map((p): [string, string] => [p.path, p.sha256])
+    : Object.entries(promptHashes);
+  return {
+    gonogoVersion,
+    backend,
+    model,
+    promptHashes: entries.sort(([a], [b]) => a.localeCompare(b)),
+  };
+}
+
+function instrumentKey(i: InstrumentIdentity): string {
+  return JSON.stringify(i);
+}
+
+function instrumentLabel(i: InstrumentIdentity): string {
+  const prompts = i.promptHashes.length
+    ? i.promptHashes.map(([path, hash]) => `${path}=${hash}`).join(", ")
+    : "(none)";
+  return `gonogo=${i.gonogoVersion}; backend=${i.backend}; model=${i.model}; prompts=${prompts}`;
 }
 
 /**
@@ -53,48 +112,58 @@ export function promptSignatureOf(
  * rewritten, so the log can be the computation substrate without the directory
  * layout having to move first.
  */
-function ratingsFromDirs(dir: string, depth = 3): Rating[] {
-  if (!existsSync(dir) || depth < 0) return [];
+function ratingsFromDirs(dir: string): Rating[] {
+  if (!existsSync(dir)) return [];
   const out: Rating[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const runDir = join(dir, entry.name);
-    // Recurse: a rating directory can sit anywhere under calibration/ or runs/,
-    // and a layout convention is not a good reason to lose a human verdict.
-    if (!existsSync(join(runDir, "human.json"))) {
-      out.push(...ratingsFromDirs(runDir, depth - 1));
-      continue;
-    }
     const vp = join(runDir, "verdict.json");
     const hp = join(runDir, "human.json");
-    // A human verdict counts whether or not a machine verdict sits beside it.
-    // Requiring the pair meant a reviewer's scores for a run gonogo never
-    // judged were dropped without a word, which is the one thing a calibration
-    // tool must never do with the evidence it exists to collect.
-    if (!existsSync(hp)) continue;
-    const h = JSON.parse(readFileSync(hp, "utf8")) as HumanFile;
-    const synthetic = h.synthetic === true;
-    if (existsSync(vp)) {
-      const v = JSON.parse(readFileSync(vp, "utf8")) as VerdictFile;
-      const judgeScores: Scores = {};
-      for (const d of DIMENSIONS) {
-        const r = v.dimensions[d];
-        judgeScores[d] = r.score === "abstain" ? "abstain" : (r.score as number);
-      }
-      out.push({
-        runId: h.run_id || entry.name,
-        raterId: `judge:${v.provenance.judge_backend}`,
-        scores: judgeScores,
-        synthetic,
-        promptSignature: promptSignatureOf(v.provenance.prompt_files),
-      });
+    if (!existsSync(hp)) {
+      out.push(...ratingsFromDirs(runDir));
+      continue;
     }
+    const h = JSON.parse(readFileSync(hp, "utf8")) as HumanFile;
+    const reviewerScores = humanScores(h.dimensions, `${hp}.dimensions`);
+    const synthetic = h.synthetic === true;
     out.push({
-      runId: h.run_id || entry.name,
+      runId: h.run_id,
       raterId: h.reviewer,
-      scores: h.dimensions as Scores,
+      scores: reviewerScores,
       synthetic,
       notes: h.notes ?? null,
+    });
+    if (!existsSync(vp)) continue;
+    const v = JSON.parse(readFileSync(vp, "utf8")) as VerdictFile;
+    const sources = v.provenance.pass_sources;
+    if (
+      v.provenance.replayed === true ||
+      sources?.blind === "cache" ||
+      sources?.rubric === "cache"
+    ) {
+      continue;
+    }
+    const verdictRunId = v.run_id;
+    const artifactRunId = verdictRunId ?? entry.name;
+    if (h.run_id !== artifactRunId) {
+      throw new Error(
+        `Run id mismatch in ${hp}: human run_id ${JSON.stringify(h.run_id)} ` +
+          `does not match artifact ${JSON.stringify(artifactRunId)}.`,
+      );
+    }
+    const judgeScores = verdictScores(v.dimensions, `${vp}.dimensions`);
+    out.push({
+      runId: artifactRunId,
+      raterId: `judge:${v.provenance.judge_backend}`,
+      scores: judgeScores,
+      synthetic,
+      instrument: instrument(
+        v.provenance.gonogo_version,
+        v.provenance.judge_backend,
+        v.provenance.model_version,
+        v.provenance.prompt_files,
+      ),
     });
   }
   return out;
@@ -111,8 +180,8 @@ function ratingsFromEvents(events: GonogoEvent[]): Rating[] {
         runId: e.run_id,
         raterId: e.rater_id,
         scores: e.scores,
-        synthetic: false,
-        promptSignature: promptSignatureOf(e.prompt_hashes),
+        synthetic: e.kind === "fixture",
+        instrument: instrument(e.gonogo_version, e.backend, e.model_version, e.prompt_hashes),
       });
     } else if (isRaterEvent(e)) {
       out.push({
@@ -120,6 +189,7 @@ function ratingsFromEvents(events: GonogoEvent[]): Rating[] {
         raterId: e.rater_id,
         scores: e.scores,
         synthetic: e.synthetic === true,
+        notes: e.notes ?? null,
       });
     }
   }
@@ -140,14 +210,32 @@ export interface CalibrateOptions {
 
 export function runCalibrate(o: CalibrateOptions): string {
   const { events, malformed } = readEvents(o.eventsPath);
-  const ratings = [...ratingsFromEvents(events), ...o.dirs.flatMap((d) => ratingsFromDirs(d))];
+  const ratings = [...ratingsFromEvents(events), ...o.dirs.flatMap(ratingsFromDirs)];
 
   // The same (run, rater) may appear both in the log and in a run directory.
-  // First writer wins; the log is read first because it carries more fields.
+  // Exact duplicates add no observation. Conflicts are data corruption, not a
+  // precedence question: choosing either one would silently change the result.
   const seen = new Map<string, Rating>();
   for (const r of ratings) {
-    const key = `${r.runId} ${r.raterId}`;
-    if (!seen.has(key)) seen.set(key, r);
+    const key = JSON.stringify([r.runId, r.raterId]);
+    const prior = seen.get(key);
+    if (prior === undefined) {
+      seen.set(key, r);
+      continue;
+    }
+    const sameScores = DIMENSIONS.every((d) => prior.scores[d] === r.scores[d]);
+    const sameInstrument =
+      prior.instrument === undefined && r.instrument === undefined
+        ? true
+        : prior.instrument !== undefined &&
+          r.instrument !== undefined &&
+          instrumentKey(prior.instrument) === instrumentKey(r.instrument);
+    if (!sameScores || prior.synthetic !== r.synthetic || !sameInstrument) {
+      throw new Error(
+        `Conflicting ratings for run ${JSON.stringify(r.runId)}, ` +
+          `rater ${JSON.stringify(r.raterId)}.`,
+      );
+    }
   }
 
   const byRun = new Map<string, Rating[]>();
@@ -159,7 +247,14 @@ export function runCalibrate(o: CalibrateOptions): string {
   // A comparison needs two raters on the same run. Anything else is a run
   // nobody double-scored, which is what Phase 1 of the trust ratchet exists
   // to eliminate.
-  const pairs: { runId: string; a: Rating; b: Rating; synthetic: boolean }[] = [];
+  const pairs: {
+    runId: string;
+    a: Rating;
+    b: Rating;
+    synthetic: boolean;
+    instrumentKey: string;
+    instrumentLabel: string;
+  }[] = [];
   for (const [runId, rs] of byRun) {
     for (let i = 0; i < rs.length; i++) {
       for (let j = i + 1; j < rs.length; j++) {
@@ -168,38 +263,52 @@ export function runCalibrate(o: CalibrateOptions): string {
         // Order the pair so a judge is always side A; the direction of
         // disagreement only means something if the sides are stable.
         const [a, b] = first.raterId.startsWith("judge:") ? [first, second] : [second, first];
-        pairs.push({ runId, a, b, synthetic: first.synthetic || second.synthetic });
+        const instruments = [a.instrument, b.instrument]
+          .filter((value): value is InstrumentIdentity => value !== undefined)
+          .sort((x, y) => instrumentKey(x).localeCompare(instrumentKey(y)));
+        const identities = [...new Map(instruments.map((i) => [instrumentKey(i), i])).values()];
+        pairs.push({
+          runId,
+          a,
+          b,
+          synthetic: first.synthetic || second.synthetic,
+          instrumentKey: JSON.stringify(identities.map(instrumentKey)),
+          instrumentLabel:
+            identities.length > 0
+              ? identities.map(instrumentLabel).join(" <> ")
+              : "human-only comparison (no judge instrument)",
+        });
       }
     }
   }
 
   const out: string[] = [];
   const unscored = [...byRun.values()].filter((rs) => rs.length < 2).length;
-
-  // Ratings by someone other than the judge, on runs nobody else scored. These
-  // are real review effort, and a calibration tool that drops them on the floor
-  // is lying by omission about the evidence it holds.
   const orphanHuman = [...byRun.values()]
-    .filter((rs) => rs.length < 2)
-    .flatMap((rs) => rs)
-    .filter((r) => !r.raterId.startsWith("judge:") && !r.synthetic);
+    .filter((ratings) => ratings.length < 2)
+    .flatMap((ratings) => ratings)
+    .filter((rating) => !rating.raterId.startsWith("judge:") && !rating.synthetic);
   const anyRealHumanRating = [...seen.values()].some(
-    (r) => !r.raterId.startsWith("judge:") && !r.synthetic,
+    (rating) => !rating.raterId.startsWith("judge:") && !rating.synthetic,
   );
 
   const orphanBlock = (): string[] => {
     if (orphanHuman.length === 0) return [];
     const lines = ["", "human ratings with nothing to compare against"];
-    for (const r of orphanHuman) {
-      const shown = DIMENSIONS.map((d) => `${d} ${r.scores[d] ?? "-"}`).join(", ");
-      lines.push(`  ${r.runId}  by ${r.raterId}`);
+    for (const rating of orphanHuman) {
+      const shown = DIMENSIONS.map(
+        (dimension) => `${dimension} ${rating.scores[dimension]}`,
+      ).join(", ");
+      lines.push(`  ${rating.runId}  by ${rating.raterId}`);
       lines.push(`    ${shown}`);
-      if (r.notes) lines.push(`    "${r.notes.slice(0, 300)}${r.notes.length > 300 ? "..." : ""}"`);
+      if (rating.notes) {
+        const note = rating.notes.length > 300 ? `${rating.notes.slice(0, 300)}...` : rating.notes;
+        lines.push(`    ${JSON.stringify(note)}`);
+      }
     }
     lines.push(
-      "  These are counted as review effort, not as agreement. To turn one into a",
-      "  calibration pair, judge the same run with the same evidence and the same",
-      "  run_id, so both raters scored the same thing.",
+      "  These are review records, not agreement data. Pair only ratings made from",
+      "  the same evidence snapshot under the same run_id.",
     );
     return lines;
   };
@@ -230,14 +339,10 @@ export function runCalibrate(o: CalibrateOptions): string {
     out.push("Every pair below was hand-written to exercise the aggregation.");
     out.push(
       anyRealHumanRating
-        ? "Real human ratings DO exist (listed below) but none share a run with a judge"
+        ? "Real human ratings exist, but none forms a same-evidence judge pair."
         : "No human has reviewed a real gonogo run yet.",
     );
-    out.push(
-      anyRealHumanRating
-        ? "verdict, so none of them contribute here. Do not quote these figures anywhere."
-        : "Do not quote these figures anywhere.",
-    );
+    out.push("Do not quote these figures anywhere.");
     out.push("=".repeat(72));
     out.push("");
   } else if (synth.length > 0) {
@@ -248,30 +353,24 @@ export function runCalibrate(o: CalibrateOptions): string {
   }
 
   const scored = real.length > 0 ? real : synth;
-
-  // METHODS.md: a prompt change makes a new instrument version, and runs from
-  // different versions are reported separately, never pooled silently into one
-  // agreement figure. The judge side of each pair carries the signature.
-  const stratumOf = (p: { a: Rating }) => p.a.promptSignature ?? "(prompt version not recorded)";
   const pairKeys = [
-    ...new Set(scored.map((p) => `${p.a.raterId} vs ${p.b.raterId}\u0000${stratumOf(p)}`)),
+    ...new Set(
+      scored.map((p) =>
+        JSON.stringify([p.instrumentKey, `${p.a.raterId} vs ${p.b.raterId}`]),
+      ),
+    ),
   ].sort();
-  const strata = new Set(scored.map(stratumOf));
-  if (strata.size > 1) {
-    out.push(
-      `${strata.size} prompt versions present. Agreement is reported per version and`,
-      "never pooled across them: a prompt change makes a new instrument, not more data.",
-      "",
-    );
-  }
 
-  for (const compositeKey of pairKeys) {
-    const [key, stratum] = compositeKey.split("\u0000") as [string, string];
+  for (const groupKey of pairKeys) {
+    const [instrumentId, raterPair] = JSON.parse(groupKey) as [string, string];
     const group = scored.filter(
-      (p) => `${p.a.raterId} vs ${p.b.raterId}` === key && stratumOf(p) === stratum,
+      (p) =>
+        p.instrumentKey === instrumentId && `${p.a.raterId} vs ${p.b.raterId}` === raterPair,
     );
-    out.push(`rater pair: ${key}   (${group.length} run${group.length === 1 ? "" : "s"})`);
-    out.push(`  prompt version: ${stratum}`);
+    out.push(`instrument: ${group[0]!.instrumentLabel}`);
+    out.push(
+      `rater pair: ${raterPair}   (${group.length} run${group.length === 1 ? "" : "s"})`,
+    );
     out.push(
       pad("  dimension", 20) +
         padL("exact", 8) +
@@ -320,7 +419,8 @@ export function runCalibrate(o: CalibrateOptions): string {
     out.push(
       `  ${pad(p.runId, 30)}${p.synthetic ? "[synthetic] " : ""}` +
         (diffs.length ? diffs.join("; ") : "full agreement") +
-        (abst.length ? `; abstentions: ${abst.join(", ")}` : ""),
+        (abst.length ? `; abstentions: ${abst.join(", ")}` : "") +
+        `; instrument: ${p.instrumentLabel}`,
     );
   }
 

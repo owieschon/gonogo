@@ -36,12 +36,13 @@ echo "self-judging $root against $base with spec $spec"
 echo "the tool is the subject here, not the operator"
 
 # --test-cmd is the repo's own gate: typecheck plus the fixture set in replay
-# mode, so self-judging never spends a live judge call per fixture.
+# mode. Its fixture events stay inside this run directory; the test command
+# must not mutate the subject repository after its evidence snapshot was taken.
 exec "$root/bin/gonogo" judge \
   --spec "$spec" \
   --repo "$root" \
   --base "$base" \
-  --test-cmd "bunx tsc --noEmit && ./bin/gonogo eval --replay --k 3" \
+  --test-cmd "bunx tsc --noEmit && ./bin/gonogo eval --replay --k 3 --events \"$out/eval-events.jsonl\"" \
   --max-diff-chars 400000 \
   --out "$out" \
   "${extra[@]}"
