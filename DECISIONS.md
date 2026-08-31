@@ -68,3 +68,55 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   limit for a self-judge run is not softening the verdict — a judge that cannot
   see the source cannot find fault in it. `scripts/self-judge.sh` passes 400000
   and the CLI warns loudly whenever a diff is elided.
+
+## Addendum session — instrumentation and hardening
+
+- **No Langfuse, no Arize, no PostHog, no OpenTelemetry SDK.** The thesis of
+  this tool is local-first evidence: a verdict you can check is worth more than
+  a dashboard you must trust. A hosted observability platform inverts that — the
+  evidence leaves the machine, the operator reads a summary of it, and the thing
+  gonogo is supposed to prevent (accepting a claim instead of an artifact) is
+  reintroduced at the tooling layer. `events.jsonl` is a file you can `grep`.
+  Event field names follow the OpenTelemetry GenAI semantic conventions where a
+  natural match exists (`model_version` ≈ `gen_ai.request.model`, `tokens_in` ≈
+  `gen_ai.usage.input_tokens`, `tokens_out` ≈ `gen_ai.usage.output_tokens`), so
+  exporting later is a mapping and not a migration. **Zero telemetry, ever:**
+  nothing in this repository sends anything anywhere, and no future version will.
+  Revisit when there is a second operator, or when the log outgrows what a
+  laptop can grep — neither is true today.
+- **The replay cache key includes the sample index.** Keying purely on
+  (prompt hash, evidence hash) would collapse all k samples of one fixture into
+  one entry, and `gonogo eval` would then report zero variance for a judge that
+  has plenty. The stochasticity is the measurement; the key has to preserve it.
+- **An unparseable judge reply is never recorded.** The cache exists to replay
+  working runs, not to make a broken one reproducible.
+- **Replayed runs are excluded from calibration.** Serving the same judgement
+  twice is not a second observation, and counting it would inflate agreement.
+- **Evidence blocks are delimited with a token derived from the evidence hash.**
+  Code fences are not a boundary: evidence can contain a closing fence and carry
+  on in prose that reads like instruction. The token depends on a hash of the
+  whole evidence packet — including the injection — so whoever wrote the
+  evidence could not have known it. A literal delimiter inside evidence is
+  visibly redacted rather than silently dropped.
+- **`attempted_gaming` is raised by quoted evidence, not only by the flag.** If
+  the judge quotes an instruction it found but forgets the boolean, the finding
+  still stands. Either signal raises it.
+- **I2 is a compile error, not a convention.** `blindAttachments` takes a
+  branded `BlindPacket`. Without the brand, `Evidence` would satisfy the shape
+  structurally — it also has `diff` and `transcript` — and the invariant would
+  rest on nobody making that mistake. `bunx tsc --noEmit` now rejects it.
+- **`fixtures/*/replay/` was replaced by a single content-addressed `replay/`.**
+  Per-fixture verdict files could not express "this output belongs to these
+  prompts", so an edited prompt silently served stale verdicts. The new key
+  includes the prompt hash, so a prompt edit misses loudly.
+- **The log was born at schema v2.** Both addenda landed in one session, so no
+  v1 events were ever written. The v1 to v2 migration is implemented and covered
+  by tests rather than exercised by real data; that is the honest state of it.
+- **Exit codes map five verdicts onto four codes.** `go` and `go-with-notes`
+  both exit 0 — a go with notes is still a go — and `hold` joins `no-go` at 1,
+  because neither is a go. `inconclusive` is 2 and tool failure is 3, so a
+  caller can tell "the work is bad" from "the judge could not tell" from "the
+  tool broke". No `--gate` flag: the exit code is the whole surface.
+- **`gonogo outcome` records what happened by hand; it does not talk to GitHub.**
+  A GitHub integration would need credentials, network access and a webhook
+  story, all to save typing one command when a PR lands.
