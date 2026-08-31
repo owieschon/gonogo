@@ -36,7 +36,12 @@ jobs:
       #
       # What this does catch: a change to labels.json, to the scoring code, to
       # the verdict arithmetic, or to the eval maths that would make a recorded
-      # verdict stop passing its labels.
+      # verdict stop passing its labels. Three things fail the job — a run that
+      # produces no verdict, a failed core check, and any aggregate accuracy
+      # falling below the floor recorded in fixtures/thresholds.json. Until that
+      # threshold gate existed, dimension, verdict and drift accuracy could all
+      # regress while this step stayed green, and the paragraph you are reading
+      # claimed otherwise.
       #
       # What this does NOT catch: a regression in prompts/*.md. Replay tests the
       # pipeline, not the model. The cache is keyed on the prompt hash, so an

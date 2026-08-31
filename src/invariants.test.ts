@@ -11,7 +11,7 @@ import { hashOf, readCache, writeCache } from "./replay.ts";
 import { runCalibrate, promptSignatureOf } from "./calibrate.ts";
 import { blindAttachments, blindPacket } from "./blind.ts";
 import { renderPrompt } from "./judges/index.ts";
-import { computeVerdict, extractJson, parseRubricPass, repairJson, sha256 } from "./rubric.ts";
+import { auditCitations, computeVerdict, extractJson, parseRubricPass, repairJson, sha256 } from "./rubric.ts";
 import { EVENT_SCHEMA_VERSION, migrateEvent } from "./events.ts";
 import type { Evidence } from "./types.ts";
 
@@ -317,5 +317,63 @@ describe("calibration stratifies by prompt version", () => {
     const before = promptSignatureOf({ "prompts/rubric-pass.md": "1".repeat(64) });
     const after = promptSignatureOf({ "prompts/rubric-pass.md": "2".repeat(64) });
     expect(before).not.toBe(after);
+  });
+});
+
+describe("cite-or-abstain checks the evidence, not just the shape", () => {
+  const EVIDENCE = `
++const EMAIL_PATTERN = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+[14:04] agent: Ran node test.js. 4/4 pass.
+`;
+  const withCitations = (cites: string[]) =>
+    JSON.stringify({
+      task_satisfaction: {
+        score: 4,
+        requirements_total: 1,
+        requirements_met: 1,
+        citations: cites,
+        reasoning: "met 1 of 1",
+      },
+      scope_discipline: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
+      claim_verification: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
+      goal_alignment: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
+      spec_clarity: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
+      judge_confidence: 0.9,
+      summary: "s",
+      drift_type: "none",
+    });
+
+  test("a fabricated citation cannot support a score", () => {
+    const r = parseRubricPass(
+      withCitations(["const STRICT_MODE = true; // never appeared anywhere"]),
+      EVIDENCE,
+    );
+    expect(r.task_satisfaction.score).toBe("abstain");
+    expect((r.task_satisfaction as { reason: string }).reason).toContain("citation");
+  });
+
+  test("a real citation still scores, and whitespace differences are tolerated", () => {
+    const r = parseRubricPass(withCitations(["Ran   node test.js.    4/4 pass."]), EVIDENCE);
+    expect(r.task_satisfaction.score).toBe(4);
+  });
+
+  test("a partly fabricated set keeps the score but says so in the reasoning", () => {
+    const r = parseRubricPass(
+      withCitations(["Ran node test.js. 4/4 pass.", "this quote was never in the evidence"]),
+      EVIDENCE,
+    );
+    expect(r.task_satisfaction.score).toBe(4);
+    expect((r.task_satisfaction as { reasoning: string }).reasoning).toContain(
+      "could not be located",
+    );
+  });
+
+  test("auditCitations skips quotes too short to identify", () => {
+    const a = auditCitations(["ok", "true"], EVIDENCE);
+    expect(a.checked).toBe(0);
+  });
+
+  test("with no evidence supplied, verification is skipped rather than guessed", () => {
+    expect(parseRubricPass(withCitations(["anything at all here"])).task_satisfaction.score).toBe(4);
   });
 });
