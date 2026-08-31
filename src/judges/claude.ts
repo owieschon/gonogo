@@ -24,13 +24,15 @@ const LEAN_FLAGS = [
 
 export class ClaudeBackend implements JudgeBackend {
   readonly name = "claude-cli";
+  /** Set per call by the pipeline; see renderPrompt. */
+  delimiterToken = "UNKEYED";
   constructor(
     private readonly model: string | undefined = process.env.GONOGO_CLAUDE_MODEL,
     private readonly timeoutMs = 10 * 60 * 1000,
   ) {}
 
   async invoke(promptFile: string, attachments: Attachment[]): Promise<JudgeResponse> {
-    const prompt = renderPrompt(readFileSync(promptFile, "utf8"), attachments);
+    const prompt = renderPrompt(readFileSync(promptFile, "utf8"), attachments, this.delimiterToken);
     const args = [...LEAN_FLAGS];
     if (this.model) args.push("--model", this.model);
     const started = Date.now();
@@ -52,14 +54,26 @@ export class ClaudeBackend implements JudgeBackend {
       models.sort((a, b) => (usage[b]?.outputTokens ?? 0) - (usage[a]?.outputTokens ?? 0))[0] ??
       this.model ??
       "unknown";
+    // The CLI splits prompt tokens across input_tokens and the two cache
+    // counters. Sum them: what matters downstream is how much text the judge
+    // was shown, not how it was billed.
+    const u = parsed.usage ?? {};
+    const tokensIn = num(u.input_tokens) + num(u.cache_creation_input_tokens) + num(u.cache_read_input_tokens);
+    const tokensOut = num(u.output_tokens);
     return {
       text: String(parsed.result ?? ""),
       model: primary,
       models: Object.keys(usage),
       costUsd: typeof parsed.total_cost_usd === "number" ? parsed.total_cost_usd : null,
       durationMs: Date.now() - started,
+      tokensIn: tokensIn > 0 ? tokensIn : null,
+      tokensOut: tokensOut > 0 ? tokensOut : null,
     };
   }
+}
+
+function num(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
 function run(cmd: string, args: string[], stdin: string, timeoutMs: number): Promise<string> {
