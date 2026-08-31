@@ -22,6 +22,29 @@ interface Rating {
   raterId: string;
   scores: Scores;
   synthetic: boolean;
+  /**
+   * Which prompt version produced (or was compared against) this rating.
+   * METHODS.md: a prompt change makes a new instrument, and runs from
+   * different instruments are never pooled silently into one figure.
+   */
+  promptSignature?: string | null;
+  notes?: string | null;
+}
+
+/** A short, stable label for one set of prompt files. */
+export function promptSignatureOf(
+  files: { path: string; sha256: string }[] | Record<string, string> | undefined,
+): string | null {
+  if (!files) return null;
+  const pairs = Array.isArray(files)
+    ? files.map((f) => [f.path, f.sha256] as const)
+    : Object.entries(files);
+  if (pairs.length === 0) return null;
+  return pairs
+    .slice()
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([path, sha]) => `${path.split("/").pop()}@${sha.slice(0, 8)}`)
+    .join(" ");
 }
 
 /**
@@ -30,34 +53,48 @@ interface Rating {
  * rewritten, so the log can be the computation substrate without the directory
  * layout having to move first.
  */
-function ratingsFromDirs(dir: string): Rating[] {
-  if (!existsSync(dir)) return [];
+function ratingsFromDirs(dir: string, depth = 3): Rating[] {
+  if (!existsSync(dir) || depth < 0) return [];
   const out: Rating[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const runDir = join(dir, entry.name);
+    // Recurse: a rating directory can sit anywhere under calibration/ or runs/,
+    // and a layout convention is not a good reason to lose a human verdict.
+    if (!existsSync(join(runDir, "human.json"))) {
+      out.push(...ratingsFromDirs(runDir, depth - 1));
+      continue;
+    }
     const vp = join(runDir, "verdict.json");
     const hp = join(runDir, "human.json");
-    if (!existsSync(vp) || !existsSync(hp)) continue;
-    const v = JSON.parse(readFileSync(vp, "utf8")) as VerdictFile;
+    // A human verdict counts whether or not a machine verdict sits beside it.
+    // Requiring the pair meant a reviewer's scores for a run gonogo never
+    // judged were dropped without a word, which is the one thing a calibration
+    // tool must never do with the evidence it exists to collect.
+    if (!existsSync(hp)) continue;
     const h = JSON.parse(readFileSync(hp, "utf8")) as HumanFile;
-    const judgeScores: Scores = {};
-    for (const d of DIMENSIONS) {
-      const r = v.dimensions[d];
-      judgeScores[d] = r.score === "abstain" ? "abstain" : (r.score as number);
-    }
     const synthetic = h.synthetic === true;
+    if (existsSync(vp)) {
+      const v = JSON.parse(readFileSync(vp, "utf8")) as VerdictFile;
+      const judgeScores: Scores = {};
+      for (const d of DIMENSIONS) {
+        const r = v.dimensions[d];
+        judgeScores[d] = r.score === "abstain" ? "abstain" : (r.score as number);
+      }
+      out.push({
+        runId: h.run_id || entry.name,
+        raterId: `judge:${v.provenance.judge_backend}`,
+        scores: judgeScores,
+        synthetic,
+        promptSignature: promptSignatureOf(v.provenance.prompt_files),
+      });
+    }
     out.push({
-      runId: entry.name,
-      raterId: `judge:${v.provenance.judge_backend}`,
-      scores: judgeScores,
-      synthetic,
-    });
-    out.push({
-      runId: entry.name,
+      runId: h.run_id || entry.name,
       raterId: h.reviewer,
       scores: h.dimensions as Scores,
       synthetic,
+      notes: h.notes ?? null,
     });
   }
   return out;
@@ -70,7 +107,13 @@ function ratingsFromEvents(events: GonogoEvent[]): Rating[] {
       // Replayed runs are the same judgement served twice; counting them would
       // inflate agreement without adding an observation.
       if (e.replay) continue;
-      out.push({ runId: e.run_id, raterId: e.rater_id, scores: e.scores, synthetic: false });
+      out.push({
+        runId: e.run_id,
+        raterId: e.rater_id,
+        scores: e.scores,
+        synthetic: false,
+        promptSignature: promptSignatureOf(e.prompt_hashes),
+      });
     } else if (isRaterEvent(e)) {
       out.push({
         runId: e.run_id,
@@ -97,7 +140,7 @@ export interface CalibrateOptions {
 
 export function runCalibrate(o: CalibrateOptions): string {
   const { events, malformed } = readEvents(o.eventsPath);
-  const ratings = [...ratingsFromEvents(events), ...o.dirs.flatMap(ratingsFromDirs)];
+  const ratings = [...ratingsFromEvents(events), ...o.dirs.flatMap((d) => ratingsFromDirs(d))];
 
   // The same (run, rater) may appear both in the log and in a run directory.
   // First writer wins; the log is read first because it carries more fields.
@@ -133,12 +176,41 @@ export function runCalibrate(o: CalibrateOptions): string {
   const out: string[] = [];
   const unscored = [...byRun.values()].filter((rs) => rs.length < 2).length;
 
+  // Ratings by someone other than the judge, on runs nobody else scored. These
+  // are real review effort, and a calibration tool that drops them on the floor
+  // is lying by omission about the evidence it holds.
+  const orphanHuman = [...byRun.values()]
+    .filter((rs) => rs.length < 2)
+    .flatMap((rs) => rs)
+    .filter((r) => !r.raterId.startsWith("judge:") && !r.synthetic);
+  const anyRealHumanRating = [...seen.values()].some(
+    (r) => !r.raterId.startsWith("judge:") && !r.synthetic,
+  );
+
+  const orphanBlock = (): string[] => {
+    if (orphanHuman.length === 0) return [];
+    const lines = ["", "human ratings with nothing to compare against"];
+    for (const r of orphanHuman) {
+      const shown = DIMENSIONS.map((d) => `${d} ${r.scores[d] ?? "-"}`).join(", ");
+      lines.push(`  ${r.runId}  by ${r.raterId}`);
+      lines.push(`    ${shown}`);
+      if (r.notes) lines.push(`    "${r.notes.slice(0, 300)}${r.notes.length > 300 ? "..." : ""}"`);
+    }
+    lines.push(
+      "  These are counted as review effort, not as agreement. To turn one into a",
+      "  calibration pair, judge the same run with the same evidence and the same",
+      "  run_id, so both raters scored the same thing.",
+    );
+    return lines;
+  };
+
   if (pairs.length === 0) {
     return [
       "No double-scored runs found.",
       "",
       `${byRun.size} run(s) carry exactly one rating, so there is nothing to compare.`,
       "Agreement needs two raters on the same run: the judge, and you.",
+      ...orphanBlock(),
       "",
       "Record your own verdict after a judged run as runs/<ts>/human.json — same four",
       "dimensions, same 0-4 anchors as RUBRIC.md, written before you read the judge's.",
@@ -155,8 +227,17 @@ export function runCalibrate(o: CalibrateOptions): string {
   if (real.length === 0) {
     out.push("=".repeat(72));
     out.push("SYNTHETIC DATA ONLY — these numbers measure nothing.");
-    out.push("Every pair below was hand-written to exercise the aggregation. No human has");
-    out.push("reviewed a real gonogo run yet. Do not quote these figures anywhere.");
+    out.push("Every pair below was hand-written to exercise the aggregation.");
+    out.push(
+      anyRealHumanRating
+        ? "Real human ratings DO exist (listed below) but none share a run with a judge"
+        : "No human has reviewed a real gonogo run yet.",
+    );
+    out.push(
+      anyRealHumanRating
+        ? "verdict, so none of them contribute here. Do not quote these figures anywhere."
+        : "Do not quote these figures anywhere.",
+    );
     out.push("=".repeat(72));
     out.push("");
   } else if (synth.length > 0) {
@@ -167,11 +248,30 @@ export function runCalibrate(o: CalibrateOptions): string {
   }
 
   const scored = real.length > 0 ? real : synth;
-  const pairKeys = [...new Set(scored.map((p) => `${p.a.raterId} vs ${p.b.raterId}`))].sort();
 
-  for (const key of pairKeys) {
-    const group = scored.filter((p) => `${p.a.raterId} vs ${p.b.raterId}` === key);
+  // METHODS.md: a prompt change makes a new instrument version, and runs from
+  // different versions are reported separately, never pooled silently into one
+  // agreement figure. The judge side of each pair carries the signature.
+  const stratumOf = (p: { a: Rating }) => p.a.promptSignature ?? "(prompt version not recorded)";
+  const pairKeys = [
+    ...new Set(scored.map((p) => `${p.a.raterId} vs ${p.b.raterId}\u0000${stratumOf(p)}`)),
+  ].sort();
+  const strata = new Set(scored.map(stratumOf));
+  if (strata.size > 1) {
+    out.push(
+      `${strata.size} prompt versions present. Agreement is reported per version and`,
+      "never pooled across them: a prompt change makes a new instrument, not more data.",
+      "",
+    );
+  }
+
+  for (const compositeKey of pairKeys) {
+    const [key, stratum] = compositeKey.split("\u0000") as [string, string];
+    const group = scored.filter(
+      (p) => `${p.a.raterId} vs ${p.b.raterId}` === key && stratumOf(p) === stratum,
+    );
     out.push(`rater pair: ${key}   (${group.length} run${group.length === 1 ? "" : "s"})`);
+    out.push(`  prompt version: ${stratum}`);
     out.push(
       pad("  dimension", 20) +
         padL("exact", 8) +
@@ -223,6 +323,8 @@ export function runCalibrate(o: CalibrateOptions): string {
         (abst.length ? `; abstentions: ${abst.join(", ")}` : ""),
     );
   }
+
+  out.push(...orphanBlock());
 
   out.push("");
   out.push(

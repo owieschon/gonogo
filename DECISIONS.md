@@ -126,3 +126,28 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   a maintainer: `git push origin v0.1-freeze`. METHODS.md's instrument-versioning
   section depends on the tag being on the remote, so this is a real loose end
   and not a cosmetic one.
+- **Replay refuses to attribute one backend's output to another.** The cache is
+  keyed on (prompt hash, evidence hash, sample), not on who was asked, so
+  `--replay --judge qwen` used to serve claude-cli's reasoning and write an
+  event with `rater_id: "judge:qwen-cli"`. Since `qwen` is a stub that throws if
+  actually invoked, that produced a rating by a judge that has never run — and
+  in panel mode it would fabricate cross-family agreement out of a single
+  family. A cache hit whose recorded backend differs from the requested one is
+  now an error. Found by an external reviewer; see `calibration/manual-pr-1/`.
+- **A `human.json` with no `verdict.json` beside it is still a rating.**
+  `gonogo calibrate` required both files in a directory, so the first real human
+  review this repo received was read by nobody and reported as nothing, while
+  the banner went on asserting that no human had reviewed a real run yet. Ratings
+  are now discovered recursively, unpaired human ratings are printed by name with
+  their notes, and the banner is conditioned on whether a real human rating
+  exists rather than on whether a real *pair* does.
+- **Calibration stratifies by prompt version, as METHODS.md always said it did.**
+  It did not: `calibrate.ts` contained no reference to `prompt_hashes`. Agreement
+  is now reported per (rater pair, prompt signature) and never pooled across
+  versions. The document was right and the code was wrong, which is the
+  documented order of precedence.
+- **Per-dimension accuracy is deliberately not a gate.** `gonogo eval` exits
+  non-zero on a failed core check or a run that produced no verdict, never on a
+  percentage. Label ranges are expectations and a miss may mean the label is
+  wrong — one already was. Gating on them would make the labels unfalsifiable,
+  which is the opposite of what the fixture set is for.

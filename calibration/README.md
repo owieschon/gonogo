@@ -50,3 +50,18 @@ numbers measure nothing. They are here so the command is testable on day one,
 not so it has something to report.
 
 **n=0 real pairs as of the first commit.**
+
+## Ratings without a matching judge run
+
+A directory holding only `human.json` is still read. `gonogo calibrate` finds
+rating directories recursively under `runs/` and `calibration/`, and prints any
+human rating that has no counterpart under "human ratings with nothing to
+compare against", with its notes.
+
+Such a rating is review effort, not agreement, and it is never mixed into the
+statistics. To turn one into a calibration pair, judge the same evidence and
+record it under the same `run_id`, so both raters scored the same thing.
+
+`calibration/manual-pr-1/` is an example: a blind review of PR #1's final tree
+by an independent rater. It is not a same-evidence pair with either self-judge
+run, and the reviewer said so in their own notes.

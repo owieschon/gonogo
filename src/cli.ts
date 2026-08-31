@@ -249,7 +249,7 @@ function cmdCalibrate(args: Args): number {
   const explicit = args.dir;
   const dirs = explicit
     ? (Array.isArray(explicit) ? explicit : [String(explicit)]).map((d) => resolve(d))
-    : [join(ROOT, "runs"), join(ROOT, "calibration", "synthetic")];
+    : [join(ROOT, "runs"), join(ROOT, "calibration")];
   console.log("");
   console.log(runCalibrate({ eventsPath: eventsPath(args), dirs }));
   console.log("");
