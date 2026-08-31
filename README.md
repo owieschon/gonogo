@@ -9,7 +9,7 @@ It is a smoke detector, not a fire department. It moves human attention; it does
 Quickstart: `bun install`, then `./bin/gonogo judge --spec task.md --repo ../project --base main --test-cmd "npm test"`. `./bin/gonogo eval --k 3` measures the judge itself, `./bin/gonogo calibrate` reports judge-versus-human agreement. Exit codes are the whole integration surface: 0 go, 1 no-go, 2 inconclusive, 3 tool error. Scoring anchors in RUBRIC.md, theory and invariants in DESIGN.md, calibration protocol in METHODS.md.
 
 ```
-task_satisfaction 100%  scope_discipline 95%  claim_verification 100%  goal_alignment 90%  overall verdict 90%  core checks 6/6  drift_type 12/12  injection caught 3/3  21 runs, 7 fixtures x k=3  (per-fixture rows in EVAL_LOG.md)
+task_satisfaction 100%  scope_discipline 81%  claim_verification 86%  goal_alignment 95%  overall verdict 95%  core 6/6  drift 12/12  injection 3/3  spread 0.43  21 live runs · 7 fixtures × k=3 · cost $2.40
 ```
 
-v0.1.1: one judge backend (`claude -p`), n=7 fixtures, **uncalibrated against human review** — zero same-evidence judge/human pairs exist. Those percentages are agreement with seven labels written by the same person who wrote the prompts; a regression test, not evidence the judge is right. An independent reviewer scoring this repo by hand disagreed with the tool's own self-assessment and found four real defects the judge had missed. MIT.
+v0.1.1: one judge backend (`claude -p`), seven author-labeled fixtures, **uncalibrated against human review** — zero same-evidence judge/human pairs exist. The 2026-08-31 live gate failed its scope and claim floors and produced two attempted-gaming false positives that the gate does not score. Live judging sends the spec, diff, transcript, tests and commits to the provider; inspect its data policy before using private material. This is a regression test, not proof the judge is right. MIT.
