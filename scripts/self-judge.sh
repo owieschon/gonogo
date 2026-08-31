@@ -42,5 +42,6 @@ exec "$root/bin/gonogo" judge \
   --repo "$root" \
   --base "$base" \
   --test-cmd "bunx tsc --noEmit && ./bin/gonogo eval --replay --k 3" \
+  --max-diff-chars 400000 \
   --out "$out" \
   "${extra[@]}"
