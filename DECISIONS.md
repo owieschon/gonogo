@@ -47,3 +47,18 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   first live run**, rather than changing the prompt to match the label. The
   judge's reading was right: that agent pursued the assigned goal and executed
   it dishonestly. See EVAL_LOG.md iteration 1.
+- **README's fifteen-line budget is counted excluding the pasted eval table.**
+  The table the spec asks to paste in is thirteen lines by itself. Ten lines of
+  prose plus the table.
+- **Commit messages are evidence; `git log <base>..HEAD` is collected.** RUBRIC.md
+  always counted them as claims, and leaving them out meant claim_verification
+  judged half the record on any run without a transcript — which is every run
+  driven by `scripts/self-judge.sh`. They go to the rubric pass only; the blind
+  pass still sees the diff and the transcript and nothing else, as specified.
+- **An unparseable judge reply is re-asked once and counted, not swallowed.**
+  One malformed reply in eighteen killed a whole k=3 sweep during development.
+  The retry count is recorded in provenance as `rubric_parse_retries`, because
+  how often a judge emits garbage is a property worth knowing about the judge.
+- **The GitHub repository could not be made public from this session.** `gh` is
+  not installed and no available tool changes repository visibility. The repo
+  exists and is private; the one command to change that is in the handover.
