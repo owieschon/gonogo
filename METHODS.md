@@ -45,6 +45,34 @@ disagreeing with the judge.
    is uncalibrated, and `gonogo eval` measures only agreement with hand-written
    fixture labels, which is a much weaker claim.
 
+### Instrument versioning
+
+Calibration analysis stratifies by `prompt_hashes`, which every judge event
+carries. The git tag `v0.1-freeze` marks the start of Run 01 calibration data.
+Prompt changes after that tag are allowed and expected, but a change makes a new
+instrument version: runs before and after are reported separately and never
+pooled silently into one agreement figure.
+
+### Known limits
+
+Correlated blind spots: judge and worker share a training distribution and can
+be wrong the same way about the same thing; cross-family panels decorrelate this
+partially and never fully. Judge-awareness: once workers know a judge exists
+they perform for it — expected, Goodhart, a finding when observed, and why
+calibration never stops; the `disclosure` field on each judge event records
+whether the worker was told. And the judge will be wrong; the calibration log is
+what turns that from an embarrassment into a measurement.
+
+### The trust ratchet
+
+Phase 1, where gonogo is now: judge everything and human-review everything, log
+agreement. Phase 2: dimensions with a recorded agreement track record earn
+lighter review while dimensions that disagree keep full attention — the ratchet
+turns per dimension, not per tool. Any automatic action needs all four of
+deterministic gates over the catastrophic classes, a small blast radius, a
+recorded track record, and sampling that never goes to zero. gonogo is a smoke
+detector, not a fire department. Full argument in DESIGN.md.
+
 ### What the numbers do not establish
 
 `gonogo eval` measures the judge against six labels that the same person wrote
