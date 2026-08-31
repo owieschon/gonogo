@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: typecheck
+        run: bunx tsc --noEmit
+
+      # The judge's own quality is the thing under test here, not just the code.
+      #
+      # A live run needs the `claude` CLI and an authenticated credential, which
+      # this repository does not have and will not fake. So CI runs the eval in
+      # --replay mode: it scores the verdicts recorded under fixtures/*/replay/,
+      # which were produced by a real judge and committed, against the same
+      # labels and the same core checks as a live run.
+      #
+      # What this does catch: a change to labels.json, to the scoring code, to
+      # the verdict arithmetic, or to the eval maths that would make a recorded
+      # verdict stop passing its labels.
+      #
+      # What this does NOT catch: a regression in prompts/*.md. Replayed
+      # verdicts were produced by the prompts as they stood when they were
+      # recorded, so editing a prompt cannot move these numbers. That check is a
+      # human one — run `bun run eval` locally against a live judge and record
+      # the result in EVAL_LOG.md, as AGENTS.md requires. Do not read a green
+      # tick here as evidence that a prompt change was safe.
+      - name: eval (replay)
+        run: ./bin/gonogo eval --replay --k 3
