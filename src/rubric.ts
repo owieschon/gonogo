@@ -274,6 +274,19 @@ async function call(
   if (opts.replayDir) {
     const hit = readCache(opts.replayDir, key);
     if (!hit) throw new Error(describeMiss(opts.replayDir, key));
+    // I7, provenance. The cache is keyed on the prompt and the evidence, not on
+    // who was asked, so replaying with a different --judge would otherwise serve
+    // one backend's reasoning under another's name and write that into the event
+    // log as a rating by a judge that never ran. In panel mode that fabricates
+    // cross-family agreement out of a single family. Refuse instead.
+    if (hit.backend !== backend.name) {
+      throw new Error(
+        `recorded output at this key came from "${hit.backend}", but --judge is ` +
+          `"${backend.name}". gonogo will not attribute one backend's judgement to ` +
+          `another. Replay with --judge ${hit.backend.replace(/-cli$/, "")}, or record ` +
+          `fresh output for ${backend.name}.`,
+      );
+    }
     return {
       key,
       fromCache: true,

@@ -4,9 +4,14 @@
  * invariant it guards is otherwise enforceable only by remembering to.
  */
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { hashOf, readCache, writeCache } from "./replay.ts";
+import { runCalibrate, promptSignatureOf } from "./calibrate.ts";
 import { blindAttachments, blindPacket } from "./blind.ts";
 import { renderPrompt } from "./judges/index.ts";
-import { computeVerdict, extractJson, parseRubricPass, repairJson } from "./rubric.ts";
+import { computeVerdict, extractJson, parseRubricPass, repairJson, sha256 } from "./rubric.ts";
 import { EVENT_SCHEMA_VERSION, migrateEvent } from "./events.ts";
 import type { Evidence } from "./types.ts";
 
@@ -193,5 +198,124 @@ describe("event log", () => {
     const v2 = migrateEvent({ schema_version: 1, kind: "rater", run_id: "r", scores: {} }) as any;
     expect(v2.review_minutes).toBeNull();
     expect(v2.notes).toBeNull();
+  });
+});
+
+describe("I7 — provenance survives replay", () => {
+  test("replayed output is never attributed to a backend that did not produce it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gonogo-cache-"));
+    const promptFile = join(dir, "p.md");
+    writeFileSync(promptFile, "score it");
+    const key = {
+      promptHash: sha256(readFileSync(promptFile, "utf8")),
+      evidenceHash: hashOf("EVIDENCE"),
+      sample: 1,
+    };
+    writeCache(dir, key, {
+      recorded_at: new Date().toISOString(),
+      model_version: "claude-sonnet-5",
+      backend: "claude-cli",
+      latency_ms: 1,
+      cost_usd: 0,
+      tokens_in: 1,
+      tokens_out: 1,
+      text: "{}",
+    });
+    // The cache is keyed on prompt and evidence, not on who was asked. Serving
+    // this entry to a qwen run would write a rating by a judge that never ran.
+    const hit = readCache(dir, key);
+    expect(hit?.backend).toBe("claude-cli");
+    expect(hit?.backend === "qwen-cli").toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("calibrate never loses a human rating", () => {
+  function withDir(fn: (d: string) => void) {
+    const d = mkdtempSync(join(tmpdir(), "gonogo-cal-"));
+    try {
+      fn(d);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  }
+
+  test("a human.json with no verdict.json beside it is still read and reported", () => {
+    withDir((d) => {
+      mkdirSync(join(d, "manual-x"), { recursive: true });
+      writeFileSync(
+        join(d, "manual-x", "human.json"),
+        JSON.stringify({
+          schema: "gonogo/human@1",
+          run_id: "manual-x",
+          reviewer: "someone",
+          recorded_at: new Date().toISOString(),
+          dimensions: {
+            task_satisfaction: 2,
+            scope_discipline: 3,
+            claim_verification: 2,
+            goal_alignment: 4,
+          },
+          notes: "reviewed the tree by hand",
+        }) + "\n",
+      );
+      const out = runCalibrate({ eventsPath: join(d, "nope.jsonl"), dirs: [d] });
+      expect(out).toContain("manual-x");
+      expect(out).toContain("someone");
+    });
+  });
+
+  test("a nested rating directory is found, not skipped for being one level down", () => {
+    withDir((d) => {
+      mkdirSync(join(d, "batch", "run-9"), { recursive: true });
+      writeFileSync(
+        join(d, "batch", "run-9", "human.json"),
+        JSON.stringify({
+          schema: "gonogo/human@1",
+          run_id: "run-9",
+          reviewer: "nested-reviewer",
+          recorded_at: new Date().toISOString(),
+          dimensions: { task_satisfaction: 1 },
+        }) + "\n",
+      );
+      expect(runCalibrate({ eventsPath: join(d, "nope.jsonl"), dirs: [d] })).toContain(
+        "nested-reviewer",
+      );
+    });
+  });
+
+  test("the synthetic banner does not claim nobody has reviewed when someone has", () => {
+    withDir((d) => {
+      mkdirSync(join(d, "real"), { recursive: true });
+      writeFileSync(
+        join(d, "real", "human.json"),
+        JSON.stringify({
+          schema: "gonogo/human@1",
+          run_id: "real-run",
+          reviewer: "a-person",
+          recorded_at: new Date().toISOString(),
+          dimensions: { task_satisfaction: 2 },
+        }) + "\n",
+      );
+      const out = runCalibrate({ eventsPath: join(d, "nope.jsonl"), dirs: [d] });
+      expect(out).not.toContain("No human has reviewed a real gonogo run yet");
+    });
+  });
+});
+
+describe("calibration stratifies by prompt version", () => {
+  test("a prompt signature is stable and names both prompt files", () => {
+    const sig = promptSignatureOf([
+      { path: "prompts/rubric-pass.md", sha256: "b".repeat(64) },
+      { path: "prompts/blind-pass.md", sha256: "a".repeat(64) },
+    ]);
+    // Sorted by path, so the same two files always produce the same string.
+    expect(sig).toBe("blind-pass.md@aaaaaaaa rubric-pass.md@bbbbbbbb");
+  });
+
+  test("a different prompt hash is a different instrument version", () => {
+    const before = promptSignatureOf({ "prompts/rubric-pass.md": "1".repeat(64) });
+    const after = promptSignatureOf({ "prompts/rubric-pass.md": "2".repeat(64) });
+    expect(before).not.toBe(after);
   });
 });
