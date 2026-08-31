@@ -297,3 +297,9 @@ failed two of the six — which is the point: that sample's false positives were
 prose in this log, and they are now a red gate. The next live run is expected to
 fail these checks until the false positives are understood, and that failure
 should not be resolved by deleting the checks.
+
+The same review also fixed the Claude process diagnostic: the CLI sometimes
+returns a JSON error on stdout and exits nonzero with empty stderr. gonogo now
+extracts that result instead of reporting a blank failure. The receipt is 71
+tests passing plus a clean TypeScript check; no live model call is needed for
+that error-path change.
