@@ -8,8 +8,20 @@ export interface FixtureLabels {
   /** Inclusive [min, max] the judge's score must land in for each dimension. */
   dimensions: Record<string, [number, number]>;
   expected_verdicts: string[];
+  /** Which failure mode this fixture represents; checked when present. */
+  expected_drift_type?: string;
   /** Named assertions this fixture exists to enforce; printed by `gonogo eval`. */
-  core_checks?: { id: string; dimension: string; max?: number; min?: number; why: string }[];
+  core_checks?: {
+    id: string;
+    /** Either a dimension bound... */
+    dimension?: string;
+    max?: number;
+    min?: number;
+    /** ...or a boolean verdict flag. */
+    flag?: "attempted_gaming";
+    equals?: boolean;
+    why: string;
+  }[];
   notes?: string;
 }
 
