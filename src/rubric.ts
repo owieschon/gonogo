@@ -11,8 +11,14 @@ import type {
   Verdict,
   VerdictFile,
 } from "./types.ts";
-import type { Attachment, JudgeBackend } from "./judges/index.ts";
+import type { Attachment, JudgeBackend, JudgeResponse } from "./judges/index.ts";
+
 import { GONOGO_VERSION } from "./version.ts";
+import { blindAttachments, blindPacket } from "./blind.ts";
+import { DRIFT_TYPES, EVENT_SCHEMA_VERSION, appendEvent, scoresOf } from "./events.ts";
+import type { DriftType, Disclosure, JudgeEvent } from "./events.ts";
+import { describeMiss, hashOf, readCache, writeCache } from "./replay.ts";
+import type { CacheKey } from "./replay.ts";
 
 export function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -164,10 +170,21 @@ function applyRequirementCount(d: DimensionResult, raw: any): DimensionResult {
   };
 }
 
+function coerceDrift(raw: any): DriftType {
+  const v = String(raw ?? "").trim();
+  return (DRIFT_TYPES as readonly string[]).includes(v) ? (v as DriftType) : "other";
+}
+
 export function parseRubricPass(text: string): RubricPass {
   const raw = extractJson(text);
   const conf = Number(raw.judge_confidence);
+  const gaming = Array.isArray(raw.gaming_evidence) ? raw.gaming_evidence.map(String) : [];
   return {
+    drift_type: coerceDrift(raw.drift_type),
+    // Never trust the boolean alone: quoted evidence of an instruction in the
+    // evidence blocks is itself the finding, so either signal raises the flag.
+    attempted_gaming: raw.attempted_gaming === true || gaming.length > 0,
+    gaming_evidence: gaming,
     task_satisfaction: applyRequirementCount(
       coerceDimension(raw.task_satisfaction, "task_satisfaction"),
       raw.task_satisfaction,
@@ -201,11 +218,96 @@ function evidenceAttachments(ev: Evidence): Attachment[] {
 export interface JudgeRunResult {
   verdictFile: VerdictFile;
   raw: { blind: string; rubric: string };
+  event: JudgeEvent;
 }
 
 export interface RunJudgeOptions {
   /** Extra rubric-pass attempts allowed when the reply will not parse. */
   parseRetries?: number;
+  /** Which of the k samples this is. Part of the replay cache key. */
+  sample?: number;
+  /** Serve raw judge output from this cache instead of calling a judge. */
+  replayDir?: string;
+  /** Record raw judge output into this cache. */
+  recordDir?: string;
+  /** Append a judge event here. */
+  eventsPath?: string;
+  runId?: string;
+  kind?: "fixture" | "real";
+  fixtureId?: string | null;
+  taskId?: string | null;
+  workspaceId?: string | null;
+  disclosure?: Disclosure;
+}
+
+/** Stable identity for one evidence packet, used as the replay cache key. */
+function evidenceHashOf(attachments: Attachment[]): string {
+  return hashOf(attachments.map((a) => `${a.name}\n${a.content}`).join("\n\u0000\n"));
+}
+
+interface CachedCall {
+  response: JudgeResponse;
+  key: CacheKey;
+  fromCache: boolean;
+}
+
+/**
+ * One judge call, through the record/replay cache. In replay mode no judge is
+ * invoked at all; a miss is an error naming the key, never a silent live call.
+ */
+async function call(
+  backend: JudgeBackend,
+  promptFile: string,
+  attachments: Attachment[],
+  sample: number,
+  opts: RunJudgeOptions,
+): Promise<CachedCall> {
+  const evidenceHash = evidenceHashOf(attachments);
+  const key: CacheKey = {
+    promptHash: sha256(readFileSync(promptFile, "utf8")),
+    evidenceHash,
+    sample,
+  };
+  // The delimiter token is derived from the evidence itself, so whoever wrote
+  // the evidence could not have known it in advance.
+  backend.delimiterToken = evidenceHash.slice(0, 12).toUpperCase();
+  if (opts.replayDir) {
+    const hit = readCache(opts.replayDir, key);
+    if (!hit) throw new Error(describeMiss(opts.replayDir, key));
+    return {
+      key,
+      fromCache: true,
+      response: {
+        text: hit.text,
+        model: hit.model_version,
+        models: [hit.model_version],
+        costUsd: hit.cost_usd,
+        durationMs: hit.latency_ms,
+        tokensIn: hit.tokens_in,
+        tokensOut: hit.tokens_out,
+      },
+    };
+  }
+  return { key, fromCache: false, response: await backend.invoke(promptFile, attachments) };
+}
+
+function record(
+  opts: RunJudgeOptions,
+  backend: JudgeBackend,
+  key: CacheKey,
+  r: JudgeResponse,
+): void {
+  if (!opts.recordDir) return;
+  writeCache(opts.recordDir, key, {
+    recorded_at: new Date().toISOString(),
+    model_version: r.model,
+    backend: backend.name,
+    latency_ms: r.durationMs,
+    cost_usd: r.costUsd,
+    tokens_in: r.tokensIn,
+    tokens_out: r.tokensOut,
+    text: r.text,
+  });
 }
 
 export async function runJudge(
@@ -216,45 +318,55 @@ export async function runJudge(
 ): Promise<JudgeRunResult> {
   const blindPrompt = join(promptsDir, "blind-pass.md");
   const rubricPrompt = join(promptsDir, "rubric-pass.md");
+  const sample = opts.sample ?? 1;
   const startedAt = new Date();
   const t0 = Date.now();
 
-  // Pass 1 sees the work and never the spec. That isolation is the whole point
-  // of the pass; do not add the spec to these attachments.
-  const blind = await backend.invoke(blindPrompt, [
-    { name: "DIFF", content: ev.diff, lang: "diff" },
-    { name: "TRANSCRIPT", content: ev.transcript ?? "" },
-  ]);
+  // Pass 1 sees the work and never the spec. I2 is enforced by the type: the
+  // only way to build these attachments is from a BlindPacket, and the only
+  // constructor for one copies across the diff and the transcript.
+  const blindCall = await call(backend, blindPrompt, blindAttachments(blindPacket(ev)), sample, opts);
+  const blind = blindCall.response;
   const inferredGoal = blind.text.trim();
+  if (!blindCall.fromCache) record(opts, backend, blindCall.key, blind);
 
   // Pass 2 sees everything, including what pass 1 concluded. Judges occasionally
   // emit a reply that will not parse — an unescaped quote inside a citation is
   // the usual cause. One bad reply should not lose the run, so ask again; the
   // retry count is recorded in provenance rather than swallowed, because how
   // often a judge does this is a property worth knowing about the judge.
+  const rubricAttachments = [
+    { name: "SPEC", content: ev.spec },
+    { name: "INFERRED_GOAL", content: inferredGoal },
+    ...evidenceAttachments(ev),
+  ];
   const attempts = Math.max(1, (opts.parseRetries ?? 1) + 1);
-  let rubric: Awaited<ReturnType<JudgeBackend["invoke"]>> | undefined;
+  let rubric: JudgeResponse | undefined;
+  let rubricKey: CacheKey | undefined;
+  let fromCache = false;
   let parsed: RubricPass | undefined;
   let retries = 0;
   let extraCost = 0;
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const reply = await backend.invoke(rubricPrompt, [
-      { name: "SPEC", content: ev.spec },
-      { name: "INFERRED_GOAL", content: inferredGoal },
-      ...evidenceAttachments(ev),
-    ]);
+    const c = await call(backend, rubricPrompt, rubricAttachments, sample, opts);
     try {
-      parsed = parseRubricPass(reply.text);
-      rubric = reply;
+      parsed = parseRubricPass(c.response.text);
+      rubric = c.response;
+      rubricKey = c.key;
+      fromCache = c.fromCache;
       break;
     } catch (err) {
       lastError = err;
       retries++;
-      extraCost += reply.costUsd ?? 0;
+      extraCost += c.response.costUsd ?? 0;
+      // A reply that will not parse is never recorded: the cache exists to
+      // replay working runs, not to make a broken one reproducible.
+      if (c.fromCache) throw err;
     }
   }
-  if (!parsed || !rubric) throw lastError;
+  if (!parsed || !rubric || !rubricKey) throw lastError;
+  if (!fromCache) record(opts, backend, rubricKey, rubric);
   const finishedAt = new Date();
 
   const dims: Record<Dimension, DimensionResult> = {
@@ -269,6 +381,12 @@ export async function runJudge(
     blind.costUsd === null && rubric.costUsd === null
       ? null
       : (blind.costUsd ?? 0) + (rubric.costUsd ?? 0) + extraCost;
+  const sum = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+
+  const promptFiles = [blindPrompt, rubricPrompt].map((p) => ({
+    path: p.split("/").slice(-2).join("/"),
+    sha256: sha256(readFileSync(p, "utf8")),
+  }));
 
   const verdictFile: VerdictFile = {
     schema: "gonogo/verdict@1",
@@ -279,6 +397,9 @@ export async function runJudge(
     judge_confidence: parsed.judge_confidence,
     summary: parsed.summary,
     inferred_goal: inferredGoal,
+    drift_type: parsed.drift_type,
+    attempted_gaming: parsed.attempted_gaming,
+    gaming_evidence: parsed.gaming_evidence,
     evidence_summary: {
       changed_files: ev.changedFiles,
       diff_stat: ev.diffStat,
@@ -292,10 +413,7 @@ export async function runJudge(
       judge_backend: backend.name,
       model_version: rubric.model,
       models_reported: [...new Set([...blind.models, ...rubric.models])].sort(),
-      prompt_files: [blindPrompt, rubricPrompt].map((p) => ({
-        path: p.split("/").slice(-2).join("/"),
-        sha256: sha256(readFileSync(p, "utf8")),
-      })),
+      prompt_files: promptFiles,
       started_at: startedAt.toISOString(),
       finished_at: finishedAt.toISOString(),
       duration_ms: Date.now() - t0,
@@ -306,8 +424,40 @@ export async function runJudge(
       spec_sha256: sha256(ev.spec),
       diff_sha256: sha256(ev.diff),
       rubric_parse_retries: retries,
+      replayed: fromCache,
     },
   };
 
-  return { verdictFile, raw: { blind: blind.text, rubric: rubric.text } };
+  const anyAbstain = DIMENSIONS.some((d) => isAbstain(dims[d]));
+  const event: JudgeEvent = {
+    schema_version: EVENT_SCHEMA_VERSION,
+    ts: finishedAt.toISOString(),
+    kind: opts.kind ?? "real",
+    gonogo_version: GONOGO_VERSION,
+    run_id: opts.runId ?? `${startedAt.toISOString().replace(/[:.]/g, "-")}-${sample}`,
+    fixture_id: opts.fixtureId ?? null,
+    task_id: opts.taskId ?? null,
+    workspace_id: opts.workspaceId ?? null,
+    backend: backend.name,
+    model_version: rubric.model,
+    prompt_hashes: Object.fromEntries(promptFiles.map((f) => [f.path, f.sha256])),
+    evidence_hash: rubricKey.evidenceHash,
+    rater_id: `judge:${backend.name}`,
+    scores: scoresOf(dims),
+    spec_clarity: parsed.spec_clarity.score === "abstain" ? "abstain" : (parsed.spec_clarity.score as number),
+    confidence: parsed.judge_confidence,
+    abstained: anyAbstain,
+    verdict,
+    drift_type: parsed.drift_type as DriftType,
+    attempted_gaming: parsed.attempted_gaming,
+    disclosure: opts.disclosure ?? "none",
+    latency_ms: Date.now() - t0,
+    tokens_in: sum(blind.tokensIn, rubric.tokensIn),
+    tokens_out: sum(blind.tokensOut, rubric.tokensOut),
+    cost_usd: cost,
+    replay: fromCache,
+  };
+  if (opts.eventsPath) appendEvent(opts.eventsPath, event);
+
+  return { verdictFile, raw: { blind: blind.text, rubric: rubric.text }, event };
 }
