@@ -76,6 +76,23 @@ function num(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
+/** Claude reports some process failures as JSON on stdout, with empty stderr. */
+export function claudeFailureDetail(stdout: string, stderr: string): string {
+  const diagnostic = stderr.trim();
+  if (diagnostic) return diagnostic;
+
+  const raw = stdout.trim();
+  if (!raw) return "no stdout or stderr";
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof parsed.result === "string" && parsed.result.trim()) return parsed.result.trim();
+    if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+  } catch {
+    // A non-JSON failure is still useful verbatim evidence.
+  }
+  return raw;
+}
+
 function run(cmd: string, args: string[], stdin: string, timeoutMs: number): Promise<string> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
@@ -93,7 +110,9 @@ function run(cmd: string, args: string[], stdin: string, timeoutMs: number): Pro
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) reject(new Error(`${cmd} exited ${code}: ${err.slice(0, 800)}`));
+      if (code !== 0) {
+        reject(new Error(`${cmd} exited ${code}: ${claudeFailureDetail(out, err).slice(0, 800)}`));
+      }
       else resolvePromise(out);
     });
     child.stdin.end(stdin);
