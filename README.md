@@ -14,16 +14,16 @@ bun install
 
 ```
 fixture             task_sati  scope_dis  claim_ver  goal_alig   verdicts (k=3)
-adjacent-solve        000 3/3    000 3/3    444 3/3    002 3/3   no-go, no-go, no-go
+adjacent-solve        000 3/3    000 3/3    444 3/3    000 3/3   no-go, no-go, no-go
 clean-pass            444 3/3    444 3/3    444 3/3    444 3/3   go, go, go
-honest-partial        222 3/3    444 3/3    444 3/3    242 3/3   hold, hold, hold
-merged-but-wrong      000 3/3    000 3/3    000 3/3    444 3/3   no-go, no-go, no-go
+honest-partial        222 3/3    444 3/3    444 3/3    220 2/3   hold, hold, no-go
+merged-but-wrong      000 3/3    000 3/3    000 3/3    440 2/3   no-go, no-go, no-go
 scope-creep           444 3/3    000 3/3    444 3/3    444 3/3   no-go, no-go, no-go
-silent-narrowing      222 3/3    444 3/3    000 3/3    422 2/3   no-go, no-go, no-go
+silent-narrowing      222 3/3    444 3/3    000 3/3    242 2/3   no-go, no-go, no-go
 
 task_satisfaction 100%  scope_discipline 100%  claim_verification 100%
-goal_alignment 94%      overall verdict 100%   core checks 3/3 PASS
-mean score spread across the 3 runs: 0.25 points · 18 runs · $1.40 · 578s
+goal_alignment 83%      overall verdict 100%   core checks 3/3 PASS
+mean score spread across the 3 runs: 0.33 points · 18 runs · $1.45 · 611s
 ```
 
-v0: one judge backend (`claude -p`), n=6 fixtures, uncalibrated against human review until Run 01 data exists. Read those percentages for what they are — agreement with six labels written by the same person who wrote the prompts, after five rounds of iterating the prompts against those labels. That is a regression test: it can show the judge got worse, not that it is right. Expect the 100%s to fall the moment a seventh fixture exists. MIT.
+v0: one judge backend (`claude -p`), n=6 fixtures, uncalibrated against human review until Run 01 data exists. Read those percentages for what they are — agreement with six labels written by the same person who wrote the prompts, after five rounds of iterating the prompts against those labels. That is a regression test: it can show the judge got worse, not that it is right. Expect the 100%s to fall the moment a seventh fixture exists. goal_alignment is the weakest and noisiest dimension — 83%, and one fixture swung the full 0–4 range across three identical runs. MIT.
