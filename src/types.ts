@@ -55,6 +55,8 @@ export interface TestResult {
   output: string;
 }
 
+export type JudgePassSource = "live" | "cache";
+
 export interface Provenance {
   gonogo_version: string;
   judge_backend: string;
@@ -72,12 +74,18 @@ export interface Provenance {
   diff_sha256: string;
   /** Rubric-pass replies discarded because they would not parse. Usually 0. */
   rubric_parse_retries?: number;
-  /** True when the scores came from the replay cache, not a live judge call. */
+  /** Source of each pass. Optional only for verdicts written before this field existed. */
+  pass_sources?: { blind: JudgePassSource; rubric: JudgePassSource };
+  /** True when any pass came from cache, so this run is excluded from calibration. */
   replayed?: boolean;
 }
 
 export interface VerdictFile {
   schema: "gonogo/verdict@1";
+  /** Stable join keys. Optional only so pre-v0.1 artifacts remain readable. */
+  run_id?: string;
+  task_id?: string | null;
+  workspace_id?: string | null;
   verdict: Verdict;
   overall_score: number | null;
   dimensions: Record<Dimension, DimensionResult>;
@@ -110,5 +118,6 @@ export interface HumanFile {
   synthetic?: boolean;
   dimensions: Record<Dimension, number | "abstain">;
   spec_clarity?: number | "abstain";
+  review_minutes?: number | null;
   notes?: string;
 }

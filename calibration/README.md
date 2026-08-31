@@ -5,7 +5,7 @@ Judge-versus-human agreement. See METHODS.md section 2 for the protocol.
 ## Recording a human verdict
 
 After a real `gonogo judge` run, and **before reading `verdict.json`**, write
-your own scores next to it:
+your own scores next to it in the target repository:
 
     runs/<timestamp>/verdict.json   # written by gonogo
     runs/<timestamp>/human.json     # written by you
@@ -31,15 +31,22 @@ RUBRIC.md:
 ```
 
 Any dimension may be `"abstain"`. You may also record `review_minutes` (how long
-the review took) and free-text `notes`. Then:
+the review took) and free-text `notes`. Then, from any directory:
 
-    gonogo calibrate
+    gonogo calibrate --repo /path/to/the/target-repo
 
-which reads `events.jsonl` plus every directory under `runs/` and
-`calibration/synthetic/` that holds both files, and reports agreement **per
-rater pair**. The judge is a rater like any other (`judge:claude-cli`), which is
-why adding a second judge later is data and not code. Replayed runs are excluded:
-serving the same judgement twice is not a second observation.
+which reads `events.jsonl` plus rating directories recursively under that
+repository's `runs/` and `calibration/`, alongside gonogo's bundled
+`calibration/synthetic/` examples, and reports agreement **per rater pair and
+instrument version**. A standalone `human.json` is listed as review evidence
+but never enters agreement statistics until a same-evidence verdict is paired.
+Instrument identity includes the gonogo version, backend, model and prompt
+hashes, so pipeline or prompt versions are never pooled. The `run_id` in
+`human.json` must match the verdict artifact (or the legacy directory name), or
+the command fails instead of pairing unrelated work. The judge is a rater like
+any other (`judge:claude-cli`), which is why adding a second judge later is data
+and not code. Any run with a cached pass is excluded: serving the same judgement
+twice is not a second observation.
 
 ## synthetic/
 
@@ -62,6 +69,7 @@ Such a rating is review effort, not agreement, and it is never mixed into the
 statistics. To turn one into a calibration pair, judge the same evidence and
 record it under the same `run_id`, so both raters scored the same thing.
 
-`calibration/manual-pr-1/` is an example: a blind review of PR #1's final tree
-by an independent rater. It is not a same-evidence pair with either self-judge
-run, and the reviewer said so in their own notes.
+`calibration/manual-pr-1/` is an example: an independent retrospective review
+of PR #1's final tree. It was written before the agent's closing self-review but
+after the automated HOLD had been disclosed, so it is neither blind nor a
+same-evidence pair and is not calibration data.

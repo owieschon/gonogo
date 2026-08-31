@@ -10,5 +10,5 @@
     "goal_alignment": 4
   },
   "spec_clarity": 4,
-  "notes": "Blind review of PR #1's final tree. The product is substantially built and strongly aligned with the kickoff, but explicit format constraints remain unmet. The published eval table and CI typecheck are verified; claim_verification is reduced because eval accuracy is reported but not gated, calibration does not stratify by prompt hashes as documented, and replay can misattribute a cached backend. The automated session-001 verdict did not see its own audit artifact, so this retrospective review is useful for comparison but is not a same-evidence calibration pair."
+  "notes": "Independent retrospective review of PR #1's final tree, written before reading the agent's closing self-review but after the automated HOLD/2 had been disclosed. It is therefore not blind, does not score the same evidence snapshot as the recorded judge run, and must not be counted as calibration data. The product is substantially built and strongly aligned with the kickoff, but the published eval is not fully gated, calibration did not stratify prompt versions, and replay identity was incomplete. This directory deliberately has no sibling verdict.json, so calibrate excludes the review."
 }

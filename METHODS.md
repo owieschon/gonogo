@@ -32,8 +32,9 @@ disagreeing with the judge.
 2. The human verdict is recorded **after reading the diff and before reading
    the judge's verdict**, and the file records who reviewed it. A human score
    written after reading the machine's score measures anchoring, not agreement.
-3. `gonogo calibrate` aggregates every directory that holds both a
-   `verdict.json` and a `human.json` and reports, per dimension: exact
+3. `gonogo calibrate` recursively discovers human ratings. A standalone rating
+   is shown as review evidence but never counted as agreement. A directory that
+   also holds the same run's `verdict.json` reports, per dimension: exact
    agreement, agreement within one point, mean absolute difference, and the
    direction of disagreement — how often the judge was harsher than the human
    and how often the reverse.
@@ -47,10 +48,12 @@ disagreeing with the judge.
 
 ### Instrument versioning
 
-Calibration analysis stratifies by `prompt_hashes`, which every judge event
-carries. The git tag `v0.1-freeze` marks the start of Run 01 calibration data.
-Prompt changes after that tag are allowed and expected, but a change makes a new
-instrument version: runs before and after are reported separately and never
+Calibration analysis stratifies by gonogo version, judge backend and model, and
+`prompt_hashes`, which every judge event carries. The git tag `v0.1-freeze`
+marks the pre-review 0.1.0 instrument candidate. Citation and provenance
+hardening changed scoring before the first genuine paired datum, so the reviewed
+tree identifies itself as 0.1.1. Later pipeline or prompt changes make another
+instrument version. Runs across versions are reported separately and never
 pooled silently into one agreement figure.
 
 ### Known limits

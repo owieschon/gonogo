@@ -1,14 +1,23 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertKnownFlags, parseArgs, str } from "./args.ts";
+import type { Args } from "./args.ts";
 import { collectEvidence, writeEvidence } from "./evidence.ts";
 import { runJudge } from "./rubric.ts";
 import { renderHtml } from "./report.ts";
 import { runEval } from "./eval.ts";
 import { runCalibrate } from "./calibrate.ts";
 import { makeBackend } from "./judges/index.ts";
-import { EVENT_SCHEMA_VERSION, appendEvent } from "./events.ts";
+import {
+  EVENT_SCHEMA_VERSION,
+  appendEvent,
+  isIso8601Timestamp,
+  isJudgeEvent,
+  readEvents,
+  requireOutcomeRun,
+} from "./events.ts";
 import type { Disclosure, OutcomeEvent, OutcomeState } from "./events.ts";
 import { GONOGO_VERSION } from "./version.ts";
 
@@ -29,10 +38,10 @@ const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed ag
                 [--task <id>] [--workspace <id>] [--disclosure none|mentioned]
                 [--record] [--replay] [--out <dir>] [--max-diff-chars N] [--quiet]
 
-  gonogo eval [--k 3] [--replay] [--record] [--only <fixture>] [--no-gate]
+  gonogo eval [--k 3] [--replay] [--record] [--only <fixture>]
               [--judge claude] [--markdown]
 
-  gonogo calibrate [--dir <path> ...]
+  gonogo calibrate [--repo <path>] [--dir <path> ...]
 
   gonogo outcome --task <id> --pr <url> --state merged|closed|abandoned
                  [--run <run_id>] [--merged-at <iso8601>]
@@ -52,45 +61,28 @@ Flags:
   --out         where to write the run directory (default: <repo>/runs/<timestamp>)
   --max-diff-chars  elide the diff beyond this many characters (default 120000)
   --events      append-only event log (default: <gonogo>/events.jsonl)
+  --run         stable run id used to join a verdict, human rating and outcome
   --k           runs per fixture for eval (default 3)
 
 Exit codes: 0 go or go-with-notes, 1 hold or no-go, 2 inconclusive, 3 tool error.
 `;
 
-interface Args {
-  _: string[];
-  [k: string]: string | boolean | string[];
-}
-
-function parseArgs(argv: string[]): Args {
-  const args: Args = { _: [] };
-  const multi: Record<string, string[]> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (!a.startsWith("--")) {
-      (args._ as string[]).push(a);
-      continue;
-    }
-    const key = a.slice(2);
-    const next = argv[i + 1];
-    if (next === undefined || next.startsWith("--")) {
-      args[key] = true;
-    } else {
-      (multi[key] ??= []).push(next);
-      args[key] = next;
-      i++;
-    }
-  }
-  for (const [k, v] of Object.entries(multi)) if (v.length > 1) args[k] = v;
-  return args;
-}
-
-function str(args: Args, key: string, fallback?: string): string | undefined {
-  const v = args[key];
-  if (v === undefined) return fallback;
-  if (typeof v === "boolean") return fallback;
-  return Array.isArray(v) ? v[v.length - 1] : v;
-}
+const BOOLEAN_FLAGS = new Set(["record", "replay", "quiet", "markdown"]);
+const MULTI_FLAGS = new Set(["dir"]);
+const COMMAND_FLAGS: Record<string, ReadonlySet<string>> = {
+  judge: new Set([
+    "spec", "repo", "base", "transcript", "test-cmd", "judge", "task", "workspace",
+    "disclosure", "record", "replay", "out", "max-diff-chars", "events", "run", "quiet",
+  ]),
+  eval: new Set(["k", "replay", "record", "only", "judge", "markdown", "events"]),
+  calibrate: new Set(["dir", "repo", "events"]),
+  outcome: new Set(["task", "pr", "state", "run", "merged-at", "events"]),
+  help: new Set(),
+  "--help": new Set(),
+  "-h": new Set(),
+  version: new Set(),
+  "--version": new Set(),
+};
 
 function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-");
@@ -99,6 +91,29 @@ function timestamp(): string {
 function die(msg: string): never {
   console.error(`gonogo: ${msg}`);
   process.exit(EXIT.toolError);
+}
+
+function cacheMode(args: Args): void {
+  if (args.record === true && args.replay === true) {
+    die("--record and --replay are mutually exclusive");
+  }
+}
+
+function specText(specArg: string): string {
+  if (existsSync(specArg)) return readFileSync(specArg, "utf8");
+  const pathLike = !/\s/.test(specArg) && (
+    specArg.startsWith("/") || specArg.startsWith("./") || specArg.startsWith("../") ||
+    specArg.startsWith("~/") || /\.(md|txt)$/i.test(specArg)
+  );
+  if (pathLike) {
+    die(`spec file "${specArg}" does not exist; pass a valid path or literal prompt text`);
+  }
+  return specArg;
+}
+
+function inside(parent: string, child: string): boolean {
+  const path = relative(parent, child);
+  return path !== "" && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
 function maxDiffChars(args: Args): number | undefined {
@@ -129,10 +144,10 @@ function exitCodeFor(verdict: string): number {
 }
 
 async function cmdJudge(args: Args): Promise<number> {
+  cacheMode(args);
   const specArg = str(args, "spec");
   if (!specArg) die("--spec is required (a file path, or the prompt text itself)");
-  // A path if it resolves; otherwise the flag value is the spec.
-  const spec = existsSync(specArg!) ? readFileSync(specArg!, "utf8") : specArg!;
+  const spec = specText(specArg);
 
   const repo = resolve(str(args, "repo", ".")!);
   const base = str(args, "base", "main")!;
@@ -143,6 +158,25 @@ async function cmdJudge(args: Args): Promise<number> {
     if (!quiet) process.stderr.write(s + "\n");
   };
 
+  const stamp = timestamp();
+  const runsRoot = join(repo, "runs");
+  const outDir = resolve(str(args, "out", join(runsRoot, stamp))!);
+  const judgeEventsPath = eventsPath(args);
+  const runId = str(args, "run", stamp)!;
+  if (runId.trim() === "") die("--run must be a non-empty id");
+  const existingLog = readEvents(judgeEventsPath);
+  if (existingLog.malformed > 0) {
+    die(`${judgeEventsPath} contains ${existingLog.malformed} malformed event line(s); repair the log before judging`);
+  }
+  if (existingLog.events.some((event) => isJudgeEvent(event) && event.run_id === runId)) {
+    die(`judge run_id "${runId}" already exists in ${judgeEventsPath}`);
+  }
+  if (outDir === repo) die("--out cannot be the repository root");
+  const excludedRoots = [runsRoot];
+  if (inside(repo, outDir)) excludedRoots.push(outDir);
+  if (inside(repo, DEFAULT_CACHE)) excludedRoots.push(DEFAULT_CACHE);
+  if (inside(repo, judgeEventsPath)) excludedRoots.push(judgeEventsPath);
+
   log(`gonogo ${GONOGO_VERSION}  repo=${repo}  base=${base}  judge=${backendName}`);
   log("collecting evidence...");
   const ev = collectEvidence({
@@ -152,6 +186,7 @@ async function cmdJudge(args: Args): Promise<number> {
     transcriptPath: str(args, "transcript"),
     testCmd: str(args, "test-cmd"),
     maxDiffChars: maxDiffChars(args),
+    excludeUntrackedRoots: excludedRoots,
   });
   if (ev.diff.trim() === "") die(`no diff between ${base} and the working tree of ${repo}`);
   log(`  ${ev.changedFiles.length} changed file(s), ${ev.diff.length} chars of diff`);
@@ -160,16 +195,14 @@ async function cmdJudge(args: Args): Promise<number> {
   }
   if (ev.test) log(`  test command exited ${ev.test.exitCode}`);
 
-  const stamp = timestamp();
-  const outDir = resolve(str(args, "out", join(repo, "runs", stamp))!);
   mkdirSync(outDir, { recursive: true });
   writeEvidence(join(outDir, "evidence"), ev);
 
   log("blind pass (diff + transcript only, no spec)...");
   log("rubric pass (spec + all evidence)...");
   const { verdictFile, raw } = await runJudge(ev, makeBackend(backendName), join(ROOT, "prompts"), {
-    eventsPath: eventsPath(args),
-    runId: str(args, "run", stamp)!,
+    eventsPath: judgeEventsPath,
+    runId,
     kind: "real",
     taskId: str(args, "task") ?? null,
     workspaceId: str(args, "workspace") ?? null,
@@ -216,6 +249,7 @@ async function cmdJudge(args: Args): Promise<number> {
 }
 
 async function cmdEval(args: Args): Promise<number> {
+  cacheMode(args);
   const k = Number(str(args, "k", "3"));
   if (!Number.isInteger(k) || k < 1) die("--k must be a positive integer");
   const report = await runEval({
@@ -228,7 +262,6 @@ async function cmdEval(args: Args): Promise<number> {
     replay: args.replay === true,
     record: args.record === true,
     only: str(args, "only"),
-    noGate: args["no-gate"] === true,
   });
   console.log("");
   console.log(args.markdown === true ? report.markdown : report.text);
@@ -239,16 +272,12 @@ async function cmdEval(args: Args): Promise<number> {
     );
     return EXIT.noGo;
   }
-  if (report.gateFailures.length > 0) {
-    console.error(
-      `gonogo eval: judge quality fell below the recorded floor in ` +
-        `fixtures/thresholds.json:\n  ${report.gateFailures.join("\n  ")}\n` +
-        `Lower a floor deliberately, with the reason, or fix the regression.`,
-    );
-    process.exit(1);
-  }
   if (!report.passedCoreChecks) {
     console.error("gonogo eval: core checks FAILED — the judge missed a case it must catch.");
+    return EXIT.noGo;
+  }
+  if (!report.passedQualityGate) {
+    console.error("gonogo eval: quality gate FAILED — accuracy fell below the documented CI floor.");
     return EXIT.noGo;
   }
   return EXIT.go;
@@ -256,11 +285,13 @@ async function cmdEval(args: Args): Promise<number> {
 
 function cmdCalibrate(args: Args): number {
   const explicit = args.dir;
+  const repo = resolve(str(args, "repo", ".")!);
+  const calibrationEvents = resolve(str(args, "events", join(repo, "events.jsonl"))!);
   const dirs = explicit
     ? (Array.isArray(explicit) ? explicit : [String(explicit)]).map((d) => resolve(d))
-    : [join(ROOT, "runs"), join(ROOT, "calibration")];
+    : [join(repo, "runs"), join(repo, "calibration"), join(ROOT, "calibration", "synthetic")];
   console.log("");
-  console.log(runCalibrate({ eventsPath: eventsPath(args), dirs }));
+  console.log(runCalibrate({ eventsPath: calibrationEvents, dirs }));
   console.log("");
   return EXIT.go;
 }
@@ -275,18 +306,33 @@ function cmdOutcome(args: Args): number {
   if (state !== "merged" && state !== "closed" && state !== "abandoned") {
     die(`--state must be merged, closed or abandoned, got "${state ?? "nothing"}"`);
   }
+  const runId = str(args, "run") ?? null;
+  const mergedAt = str(args, "merged-at") ?? null;
+  if (state !== "merged" && mergedAt !== null) die("--merged-at is only valid for a merged outcome");
+  if (mergedAt !== null && !isIso8601Timestamp(mergedAt)) {
+    die("--merged-at must be an ISO-8601 timestamp");
+  }
+  const path = eventsPath(args);
+  if (runId !== null) {
+    const { events, malformed } = readEvents(path);
+    if (malformed > 0) die(`${path} contains ${malformed} malformed event line(s); repair the log before joining an outcome`);
+    try {
+      requireOutcomeRun(events, runId, taskId);
+    } catch (error) {
+      die(`${error instanceof Error ? error.message : String(error)} in ${path}`);
+    }
+  }
   const event: OutcomeEvent = {
     schema_version: EVENT_SCHEMA_VERSION,
     ts: new Date().toISOString(),
     kind: "outcome",
     gonogo_version: GONOGO_VERSION,
     task_id: taskId,
-    run_id: str(args, "run") ?? null,
+    run_id: runId,
     pr_url: prUrl,
     state: state as OutcomeState,
-    merged_at: str(args, "merged-at") ?? (state === "merged" ? new Date().toISOString() : null),
+    merged_at: mergedAt ?? (state === "merged" ? new Date().toISOString() : null),
   };
-  const path = eventsPath(args);
   appendEvent(path, event);
   console.log(`recorded outcome ${state} for task ${taskId} in ${path}`);
   return EXIT.go;
@@ -294,9 +340,10 @@ function cmdOutcome(args: Args): number {
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
-const args = parseArgs(argv.slice(1));
 
 try {
+  const args = parseArgs(argv.slice(1), { booleanFlags: BOOLEAN_FLAGS, multiFlags: MULTI_FLAGS });
+  assertKnownFlags(args, COMMAND_FLAGS[cmd ?? "help"] ?? new Set());
   let code: number = EXIT.go;
   switch (cmd) {
     case "judge":

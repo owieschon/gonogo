@@ -25,6 +25,8 @@ export interface JudgeResponse {
 
 export interface JudgeBackend {
   readonly name: string;
+  /** Model selected before invocation, when the backend permits that choice. */
+  readonly requestedModel?: string;
   /** Delimiter token for evidence blocks; the pipeline sets it per call. */
   delimiterToken?: string;
   /** Render promptFile + attachments into one prompt and return the reply. */

@@ -27,14 +27,14 @@ export class ClaudeBackend implements JudgeBackend {
   /** Set per call by the pipeline; see renderPrompt. */
   delimiterToken = "UNKEYED";
   constructor(
-    private readonly model: string | undefined = process.env.GONOGO_CLAUDE_MODEL,
+    readonly requestedModel: string | undefined = process.env.GONOGO_CLAUDE_MODEL,
     private readonly timeoutMs = 10 * 60 * 1000,
   ) {}
 
   async invoke(promptFile: string, attachments: Attachment[]): Promise<JudgeResponse> {
     const prompt = renderPrompt(readFileSync(promptFile, "utf8"), attachments, this.delimiterToken);
     const args = [...LEAN_FLAGS];
-    if (this.model) args.push("--model", this.model);
+    if (this.requestedModel) args.push("--model", this.requestedModel);
     const started = Date.now();
     const raw = await run("claude", args, prompt, this.timeoutMs);
     let parsed: any;
@@ -52,7 +52,7 @@ export class ClaudeBackend implements JudgeBackend {
     // did the reasoning. Attribute the call to whichever produced the most output.
     const primary =
       models.sort((a, b) => (usage[b]?.outputTokens ?? 0) - (usage[a]?.outputTokens ?? 0))[0] ??
-      this.model ??
+      this.requestedModel ??
       "unknown";
     // The CLI splits prompt tokens across input_tokens and the two cache
     // counters. Sum them: what matters downstream is how much text the judge

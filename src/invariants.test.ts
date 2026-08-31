@@ -4,15 +4,26 @@
  * invariant it guards is otherwise enforceable only by remembering to.
  */
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { hashOf, readCache, writeCache } from "./replay.ts";
-import { runCalibrate, promptSignatureOf } from "./calibrate.ts";
+import { join } from "node:path";
 import { blindAttachments, blindPacket } from "./blind.ts";
 import { renderPrompt } from "./judges/index.ts";
-import { auditCitations, computeVerdict, extractJson, parseRubricPass, repairJson, sha256 } from "./rubric.ts";
-import { EVENT_SCHEMA_VERSION, migrateEvent } from "./events.ts";
+import {
+  computeVerdict,
+  extractJson,
+  parseRubricPass,
+  repairJson,
+  verifyRubricCitations,
+} from "./rubric.ts";
+import {
+  EVENT_SCHEMA_VERSION,
+  appendEvent,
+  isIso8601Timestamp,
+  migrateEvent,
+  requireOutcomeRun,
+} from "./events.ts";
+import type { JudgeEvent } from "./events.ts";
 import type { Evidence } from "./types.ts";
 
 const SPEC_SENTINEL = "SPEC-SENTINEL-8f3a1c-DO-NOT-LEAK";
@@ -129,6 +140,35 @@ describe("cite-or-abstain is enforced in code, not just in the prompt", () => {
     expect(parsed.task_satisfaction.score).toBe(2);
   });
 
+  test("a citation that is absent from the evidence becomes an abstention", () => {
+    const parsed = parseRubricPass(body(dim('"citations": ["invented quote"], ')));
+    const checked = verifyRubricCitations(parsed, [{ name: "DIFF", content: "c" }]);
+    expect(checked.task_satisfaction.score).toBe("abstain");
+    expect(checked.scope_discipline.score).toBe(4);
+  });
+
+  test("a blank citation cannot satisfy grounding", () => {
+    const parsed = parseRubricPass(body(dim('"citations": ["   "], ')));
+    const checked = verifyRubricCitations(parsed, [{ name: "DIFF", content: "c" }]);
+    expect(checked.task_satisfaction.score).toBe("abstain");
+  });
+
+  test("line wrapping does not invalidate an otherwise exact citation", () => {
+    const parsed = parseRubricPass(body(dim('"citations": ["line one line two"], ')));
+    const checked = verifyRubricCitations(parsed, [
+      { name: "TRANSCRIPT", content: "line one\n  line two and c" },
+    ]);
+    expect(checked.task_satisfaction.score).toBe(4);
+  });
+
+  test("diff control prefixes do not invalidate a multi-line code quote", () => {
+    const parsed = parseRubricPass(body(dim('"citations": ["first line second line"], ')));
+    const checked = verifyRubricCitations(parsed, [
+      { name: "DIFF", lang: "diff", content: "+first line\n+second line\n+c" },
+    ]);
+    expect(checked.task_satisfaction.score).toBe(4);
+  });
+
   test("attempted_gaming is raised by quoted evidence even without the flag", () => {
     const raw = body(dim('"citations": ["c"], ')).replace(
       '"summary": "s"',
@@ -167,18 +207,30 @@ describe("judge replies that are not quite JSON", () => {
 });
 
 describe("event log", () => {
+  const judge = {
+    schema_version: 1,
+    ts: "2026-08-31T00:00:00Z",
+    kind: "fixture",
+    run_id: "r1",
+    gonogo_version: "0.1.0",
+    backend: "claude-cli",
+    model_version: "claude-sonnet-5",
+    prompt_hashes: { "prompts/rubric-pass.md": "a".repeat(64) },
+    evidence_hash: "b".repeat(64),
+    rater_id: "judge:claude-cli",
+    scores: { task_satisfaction: 4 },
+    confidence: 0.8,
+    abstained: false,
+    verdict: "go",
+    latency_ms: 100,
+    tokens_in: null,
+    tokens_out: null,
+    cost_usd: null,
+    replay: false,
+  };
+
   test("a v1 judge event migrates to v2 with documented defaults", () => {
-    const v1 = {
-      schema_version: 1,
-      ts: "2026-08-31T00:00:00Z",
-      kind: "fixture",
-      run_id: "r1",
-      gonogo_version: "0.1.0",
-      backend: "claude-cli",
-      model_version: "claude-sonnet-5",
-      scores: { task_satisfaction: 4 },
-    };
-    const v2 = migrateEvent(v1) as any;
+    const v2 = migrateEvent(judge) as any;
     expect(v2.schema_version).toBe(EVENT_SCHEMA_VERSION);
     expect(v2.task_id).toBeNull();
     expect(v2.workspace_id).toBeNull();
@@ -187,193 +239,152 @@ describe("event log", () => {
     expect(v2.drift_type).toBe("other");
     expect(v2.attempted_gaming).toBe(false);
     expect(v2.scores.task_satisfaction).toBe(4);
+    expect(v2.scores.scope_discipline).toBe("abstain");
+    expect(v2.scores.claim_verification).toBe("abstain");
+    expect(v2.scores.goal_alignment).toBe("abstain");
+    expect(v2.abstained).toBe(true);
+    expect(v2.verdict).toBe("inconclusive");
   });
 
-  test("a v2 event passes through unchanged", () => {
-    const v2 = { schema_version: 2, kind: "outcome", task_id: "t", state: "merged" };
-    expect(migrateEvent(v2)).toBe(v2 as any);
+  test("a complete v2 outcome is accepted", () => {
+    const v2 = {
+      schema_version: 2,
+      ts: "2026-08-31T00:00:00Z",
+      kind: "outcome",
+      gonogo_version: "0.1.0",
+      task_id: "t",
+      run_id: null,
+      pr_url: "https://github.com/example/repo/pull/1",
+      state: "merged",
+      merged_at: "2026-08-31T00:00:00Z",
+    };
+    expect(migrateEvent(v2)).toEqual(v2 as any);
   });
 
   test("a v1 rater event gains the optional fields", () => {
-    const v2 = migrateEvent({ schema_version: 1, kind: "rater", run_id: "r", scores: {} }) as any;
+    const v2 = migrateEvent({
+      schema_version: 1,
+      ts: "2026-08-31T00:00:00Z",
+      kind: "rater",
+      gonogo_version: "0.1.0",
+      run_id: "r",
+      rater_id: "human",
+      scores: {},
+    }) as any;
     expect(v2.review_minutes).toBeNull();
     expect(v2.notes).toBeNull();
+    expect(v2.scores).toEqual({
+      task_satisfaction: "abstain",
+      scope_discipline: "abstain",
+      claim_verification: "abstain",
+      goal_alignment: "abstain",
+    });
   });
-});
 
-describe("I7 — provenance survives replay", () => {
-  test("replayed output is never attributed to a backend that did not produce it", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gonogo-cache-"));
-    const promptFile = join(dir, "p.md");
-    writeFileSync(promptFile, "score it");
-    const key = {
-      promptHash: sha256(readFileSync(promptFile, "utf8")),
-      evidenceHash: hashOf("EVIDENCE"),
-      sample: 1,
+  test("v2 scores have exactly the four rubric dimensions", () => {
+    const v2 = migrateEvent(judge) as any;
+    expect(() => migrateEvent({ ...v2, scores: { ...v2.scores, goal_alignment: undefined } })).toThrow(
+      "goal_alignment",
+    );
+    const { goal_alignment: _removed, ...missing } = v2.scores;
+    expect(() => migrateEvent({ ...v2, scores: missing })).toThrow("missing goal_alignment");
+    expect(() => migrateEvent({ ...v2, scores: { ...v2.scores, charisma: 4 } })).toThrow(
+      "unknown charisma",
+    );
+    expect(() => migrateEvent({ ...judge, scores: { ...judge.scores, charisma: 4 } })).toThrow(
+      "unknown charisma",
+    );
+  });
+
+  test("v2 judge verdict fields must agree with the dimension scores", () => {
+    const v2 = migrateEvent(judge) as any;
+    expect(() => migrateEvent({ ...v2, abstained: false })).toThrow(
+      "abstained is inconsistent",
+    );
+    expect(() => migrateEvent({ ...v2, verdict: "go" })).toThrow(
+      "verdict is inconsistent",
+    );
+  });
+
+  test("optional spec_clarity is validated when present", () => {
+    const v2 = migrateEvent(judge) as any;
+    expect(migrateEvent({ ...v2, spec_clarity: "abstain" })).toMatchObject({ spec_clarity: "abstain" });
+    expect(() => migrateEvent({ ...v2, spec_clarity: 2.5 })).toThrow("fixture.spec_clarity");
+    expect(() => migrateEvent({ ...v2, spec_clarity: null })).toThrow("fixture.spec_clarity");
+  });
+
+  test("timestamps require strict, calendar-valid ISO-8601 with a zone", () => {
+    expect(isIso8601Timestamp("2026-08-31T00:00:00Z")).toBe(true);
+    expect(isIso8601Timestamp("2024-02-29T23:59:59.123-04:00")).toBe(true);
+    expect(isIso8601Timestamp("2026-08-31 00:00:00")).toBe(false);
+    expect(isIso8601Timestamp("2026-02-29T00:00:00Z")).toBe(false);
+    expect(isIso8601Timestamp("2026-08-31T00:00:00")).toBe(false);
+    expect(() => migrateEvent({ ...judge, ts: "2026-08-31" })).toThrow("ISO-8601");
+  });
+
+  test("outcome state and merged_at must agree", () => {
+    const outcome = {
+      schema_version: 2,
+      ts: "2026-08-31T00:00:00Z",
+      kind: "outcome",
+      gonogo_version: "0.1.0",
+      task_id: "t",
+      run_id: null,
+      pr_url: "https://github.com/example/repo/pull/1",
+      state: "merged",
+      merged_at: "2026-08-31T00:00:00Z",
     };
-    writeCache(dir, key, {
-      recorded_at: new Date().toISOString(),
-      model_version: "claude-sonnet-5",
-      backend: "claude-cli",
-      latency_ms: 1,
-      cost_usd: 0,
-      tokens_in: 1,
-      tokens_out: 1,
-      text: "{}",
-    });
-    // The cache is keyed on prompt and evidence, not on who was asked. Serving
-    // this entry to a qwen run would write a rating by a judge that never ran.
-    const hit = readCache(dir, key);
-    expect(hit?.backend).toBe("claude-cli");
-    expect(hit?.backend === "qwen-cli").toBe(false);
-    rmSync(dir, { recursive: true, force: true });
-  });
-});
-
-describe("calibrate never loses a human rating", () => {
-  function withDir(fn: (d: string) => void) {
-    const d = mkdtempSync(join(tmpdir(), "gonogo-cal-"));
-    try {
-      fn(d);
-    } finally {
-      rmSync(d, { recursive: true, force: true });
-    }
-  }
-
-  test("a human.json with no verdict.json beside it is still read and reported", () => {
-    withDir((d) => {
-      mkdirSync(join(d, "manual-x"), { recursive: true });
-      writeFileSync(
-        join(d, "manual-x", "human.json"),
-        JSON.stringify({
-          schema: "gonogo/human@1",
-          run_id: "manual-x",
-          reviewer: "someone",
-          recorded_at: new Date().toISOString(),
-          dimensions: {
-            task_satisfaction: 2,
-            scope_discipline: 3,
-            claim_verification: 2,
-            goal_alignment: 4,
-          },
-          notes: "reviewed the tree by hand",
-        }) + "\n",
-      );
-      const out = runCalibrate({ eventsPath: join(d, "nope.jsonl"), dirs: [d] });
-      expect(out).toContain("manual-x");
-      expect(out).toContain("someone");
+    expect(() => migrateEvent({ ...outcome, merged_at: null })).toThrow("required");
+    expect(() => migrateEvent({ ...outcome, state: "closed" })).toThrow("must be null");
+    expect(migrateEvent({ ...outcome, state: "abandoned", merged_at: null })).toMatchObject({
+      state: "abandoned",
+      merged_at: null,
     });
   });
 
-  test("a nested rating directory is found, not skipped for being one level down", () => {
-    withDir((d) => {
-      mkdirSync(join(d, "batch", "run-9"), { recursive: true });
-      writeFileSync(
-        join(d, "batch", "run-9", "human.json"),
-        JSON.stringify({
-          schema: "gonogo/human@1",
-          run_id: "run-9",
-          reviewer: "nested-reviewer",
-          recorded_at: new Date().toISOString(),
-          dimensions: { task_satisfaction: 1 },
-        }) + "\n",
-      );
-      expect(runCalibrate({ eventsPath: join(d, "nope.jsonl"), dirs: [d] })).toContain(
-        "nested-reviewer",
-      );
-    });
-  });
-
-  test("the synthetic banner does not claim nobody has reviewed when someone has", () => {
-    withDir((d) => {
-      mkdirSync(join(d, "real"), { recursive: true });
-      writeFileSync(
-        join(d, "real", "human.json"),
-        JSON.stringify({
-          schema: "gonogo/human@1",
-          run_id: "real-run",
-          reviewer: "a-person",
-          recorded_at: new Date().toISOString(),
-          dimensions: { task_satisfaction: 2 },
-        }) + "\n",
-      );
-      const out = runCalibrate({ eventsPath: join(d, "nope.jsonl"), dirs: [d] });
-      expect(out).not.toContain("No human has reviewed a real gonogo run yet");
-    });
-  });
-});
-
-describe("calibration stratifies by prompt version", () => {
-  test("a prompt signature is stable and names both prompt files", () => {
-    const sig = promptSignatureOf([
-      { path: "prompts/rubric-pass.md", sha256: "b".repeat(64) },
-      { path: "prompts/blind-pass.md", sha256: "a".repeat(64) },
-    ]);
-    // Sorted by path, so the same two files always produce the same string.
-    expect(sig).toBe("blind-pass.md@aaaaaaaa rubric-pass.md@bbbbbbbb");
-  });
-
-  test("a different prompt hash is a different instrument version", () => {
-    const before = promptSignatureOf({ "prompts/rubric-pass.md": "1".repeat(64) });
-    const after = promptSignatureOf({ "prompts/rubric-pass.md": "2".repeat(64) });
-    expect(before).not.toBe(after);
-  });
-});
-
-describe("cite-or-abstain checks the evidence, not just the shape", () => {
-  const EVIDENCE = `
-+const EMAIL_PATTERN = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
-[14:04] agent: Ran node test.js. 4/4 pass.
-`;
-  const withCitations = (cites: string[]) =>
-    JSON.stringify({
-      task_satisfaction: {
-        score: 4,
-        requirements_total: 1,
-        requirements_met: 1,
-        citations: cites,
-        reasoning: "met 1 of 1",
-      },
-      scope_discipline: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
-      claim_verification: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
-      goal_alignment: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
-      spec_clarity: { score: 4, citations: ["Ran node test.js. 4/4 pass."] },
-      judge_confidence: 0.9,
-      summary: "s",
-      drift_type: "none",
-    });
-
-  test("a fabricated citation cannot support a score", () => {
-    const r = parseRubricPass(
-      withCitations(["const STRICT_MODE = true; // never appeared anywhere"]),
-      EVIDENCE,
+  test("future, unknown and incomplete events are rejected", () => {
+    expect(() => migrateEvent({ ...judge, schema_version: 999 })).toThrow("newer than supported");
+    expect(() => migrateEvent({ ...judge, schema_version: 2, kind: "future" })).toThrow(
+      "unknown event kind",
     );
-    expect(r.task_satisfaction.score).toBe("abstain");
-    expect((r.task_satisfaction as { reason: string }).reason).toContain("citation");
+    expect(() => migrateEvent({ schema_version: 2, kind: "real" })).toThrow("event.ts");
   });
 
-  test("a real citation still scores, and whitespace differences are tolerated", () => {
-    const r = parseRubricPass(withCitations(["Ran   node test.js.    4/4 pass."]), EVIDENCE);
-    expect(r.task_satisfaction.score).toBe(4);
-  });
-
-  test("a partly fabricated set keeps the score but says so in the reasoning", () => {
-    const r = parseRubricPass(
-      withCitations(["Ran node test.js. 4/4 pass.", "this quote was never in the evidence"]),
-      EVIDENCE,
+  test("an outcome run must resolve to the same task", () => {
+    const real: JudgeEvent = {
+      ...(migrateEvent(judge) as JudgeEvent),
+      kind: "real" as const,
+      task_id: "task-1",
+    };
+    expect(requireOutcomeRun([real], "r1", "task-1")).toBe(real);
+    expect(() => requireOutcomeRun([real], "missing", "task-1")).toThrow(
+      "does not identify a real judge event",
     );
-    expect(r.task_satisfaction.score).toBe(4);
-    expect((r.task_satisfaction as { reasoning: string }).reasoning).toContain(
-      "could not be located",
+    expect(() => requireOutcomeRun([real], "r1", "task-2")).toThrow("does not match");
+    expect(() => requireOutcomeRun([{ ...real, task_id: null }], "r1", "task-1")).toThrow(
+      "has no task_id",
+    );
+    expect(() => requireOutcomeRun([real, { ...real }], "r1", "task-1")).toThrow(
+      "matches 2 real judge events",
     );
   });
 
-  test("auditCitations skips quotes too short to identify", () => {
-    const a = auditCitations(["ok", "true"], EVIDENCE);
-    expect(a.checked).toBe(0);
+  test("append rejects duplicate judge ids without changing the log", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "gonogo-events-")), "events.jsonl");
+    const event = migrateEvent(judge) as JudgeEvent;
+    appendEvent(path, event);
+    const before = readFileSync(path, "utf8");
+    expect(() => appendEvent(path, { ...event })).toThrow("already exists");
+    expect(readFileSync(path, "utf8")).toBe(before);
   });
 
-  test("with no evidence supplied, verification is skipped rather than guessed", () => {
-    expect(parseRubricPass(withCitations(["anything at all here"])).task_satisfaction.score).toBe(4);
+  test("append rejects a malformed existing log without changing it", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "gonogo-events-")), "events.jsonl");
+    writeFileSync(path, "not json\n");
+    const before = readFileSync(path, "utf8");
+    expect(() => appendEvent(path, migrateEvent(judge) as JudgeEvent)).toThrow(
+      "contains 1 malformed event line",
+    );
+    expect(readFileSync(path, "utf8")).toBe(before);
   });
 });

@@ -6,7 +6,7 @@
  * the log. That indirection is deliberate — the log is the substrate, and a
  * reporting path that bypassed it would be a second source of truth.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIMENSIONS } from "./types.ts";
 import type { Dimension } from "./types.ts";
@@ -16,6 +16,7 @@ import { makeBackend } from "./judges/index.ts";
 import { readEvents, isJudgeEvent } from "./events.ts";
 import type { JudgeEvent } from "./events.ts";
 import { listFixtures, materialize, type Fixture } from "./fixtures.ts";
+import { GONOGO_VERSION } from "./version.ts";
 
 export interface EvalOptions {
   fixturesDir: string;
@@ -27,20 +28,6 @@ export interface EvalOptions {
   replay: boolean;
   record: boolean;
   only?: string;
-  /** Report the numbers without failing on them. */
-  noGate?: boolean;
-}
-
-interface Thresholds {
-  min_dimension_accuracy?: Record<string, number>;
-  min_verdict_accuracy?: number;
-  min_drift_accuracy?: number;
-}
-
-function loadThresholds(fixturesDir: string): Thresholds | null {
-  const p = join(fixturesDir, "thresholds.json");
-  if (!existsSync(p)) return null;
-  return JSON.parse(readFileSync(p, "utf8")) as Thresholds;
 }
 
 interface FailedRun {
@@ -93,11 +80,125 @@ export interface EvalReport {
   text: string;
   markdown: string;
   passedCoreChecks: boolean;
+  passedQualityGate: boolean;
+  qualityGateReceipt: string;
   hardFailures: number;
-  /** Aggregate floors from fixtures/thresholds.json that this run fell below. */
-  gateFailures: string[];
   dimensionAccuracy: Record<string, number>;
   verdictAccuracy: number;
+}
+
+export interface EvalMetricTally {
+  ok: number;
+  total: number;
+}
+
+export interface EvalQualityGateInput {
+  hardFailures: number;
+  dimensions: Record<Dimension, EvalMetricTally>;
+  verdict: EvalMetricTally;
+  /** Absent only when the selected fixture set defines no drift labels. */
+  labelledDrift?: EvalMetricTally;
+}
+
+export interface EvalQualityFloors {
+  dimensions: Record<Dimension, number>;
+  verdict: number;
+  labelledDrift: number;
+}
+
+function floor(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`${label} must be a finite number from 0 to 1`);
+  }
+  return value;
+}
+
+/** Parse the checked-in instrument policy strictly; missing fields never disable CI. */
+export function parseEvalQualityFloors(value: unknown): EvalQualityFloors {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("fixtures/thresholds.json must be an object");
+  }
+  const raw = value as Record<string, unknown>;
+  if (raw.schema !== "gonogo/eval-thresholds@1") {
+    throw new Error("fixtures/thresholds.json has an unsupported schema");
+  }
+  if (raw.gonogo_version !== GONOGO_VERSION) {
+    throw new Error(
+      `fixtures/thresholds.json targets gonogo ${String(raw.gonogo_version)}, expected ${GONOGO_VERSION}`,
+    );
+  }
+  if (raw.min_dimension_accuracy === null || typeof raw.min_dimension_accuracy !== "object") {
+    throw new Error("fixtures/thresholds.json.min_dimension_accuracy must be an object");
+  }
+  const dimensions = raw.min_dimension_accuracy as Record<string, unknown>;
+  const keys = Object.keys(dimensions).sort();
+  const expected = [...DIMENSIONS].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new Error(
+      `fixtures/thresholds.json.min_dimension_accuracy must contain exactly ${DIMENSIONS.join(", ")}`,
+    );
+  }
+  return {
+    dimensions: Object.fromEntries(
+      DIMENSIONS.map((dimension) => [
+        dimension,
+        floor(dimensions[dimension], `fixtures/thresholds.json.${dimension}`),
+      ]),
+    ) as Record<Dimension, number>,
+    verdict: floor(raw.min_verdict_accuracy, "fixtures/thresholds.json.min_verdict_accuracy"),
+    labelledDrift: floor(raw.min_drift_accuracy, "fixtures/thresholds.json.min_drift_accuracy"),
+  };
+}
+
+export function loadEvalQualityFloors(fixturesDir: string): EvalQualityFloors {
+  const path = join(fixturesDir, "thresholds.json");
+  return parseEvalQualityFloors(JSON.parse(readFileSync(path, "utf8")));
+}
+
+export interface EvalQualityGateResult {
+  passed: boolean;
+  receipt: string;
+}
+
+function percent(rate: number): string {
+  const value = rate * 100;
+  return `${value.toFixed(Number.isInteger(value) ? 0 : 1)}%`;
+}
+
+/** Pure quality-gate evaluation, exported so each CI floor can be regression-tested. */
+export function evaluateEvalQualityGate(
+  input: EvalQualityGateInput,
+  floors: EvalQualityFloors,
+): EvalQualityGateResult {
+  const lines = ["quality gate (CI floors)"];
+  let passed = input.hardFailures === 0;
+  lines.push(
+    `  [${input.hardFailures === 0 ? "PASS" : "FAIL"}] hard failures ${input.hardFailures}; required 0`,
+  );
+
+  const check = (label: string, tally: EvalMetricTally, floor: number): void => {
+    const hasRuns = tally.total > 0;
+    const rate = hasRuns ? tally.ok / tally.total : 0;
+    const ok = hasRuns && rate >= floor;
+    if (!ok) passed = false;
+    const result = hasRuns
+      ? `${tally.ok}/${tally.total} (${percent(rate)})`
+      : "0/0 (no completed labelled runs)";
+    lines.push(
+      `  [${ok ? "PASS" : "FAIL"}] ${pad(label, 20)} ${result}; floor >= ${percent(floor)}`,
+    );
+  };
+
+  for (const d of DIMENSIONS) check(d, input.dimensions[d], floors.dimensions[d]);
+  check("overall verdict", input.verdict, floors.verdict);
+  if (input.labelledDrift === undefined) {
+    lines.push("  [SKIP] labelled drift       no drift labels in selected fixtures");
+  } else {
+    check("labelled drift", input.labelledDrift, floors.labelledDrift);
+  }
+  lines.push(`  quality gate: ${passed ? "PASS" : "FAIL"}`);
+
+  return { passed, receipt: lines.join("\n") };
 }
 
 export async function runEval(o: EvalOptions): Promise<EvalReport> {
@@ -210,7 +311,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
   // drift_type is a classification the judge already makes implicitly. Fixtures
   // that carry an expected value have it checked here.
   const labelled = fixtures.filter((f) => f.labels.expected_drift_type);
-  let driftAccuracy: number | null = null;
+  const labelledDrift: EvalMetricTally = { ok: 0, total: 0 };
   if (labelled.length > 0) {
     lines.push("");
     lines.push("drift_type classification");
@@ -230,11 +331,12 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
       );
     }
     if (driftTotal > 0) {
-      driftAccuracy = driftOk / driftTotal;
       lines.push(
         `  ${pad("accuracy", 18)} ${driftOk}/${driftTotal}  ${((100 * driftOk) / driftTotal).toFixed(0)}%`,
       );
     }
+    labelledDrift.ok = driftOk;
+    labelledDrift.total = driftTotal;
   }
 
   lines.push("");
@@ -306,54 +408,6 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     if (malformed > 0) lines.push(`  ${malformed} malformed line(s) skipped in ${o.eventsPath}`);
   }
 
-  // The aggregate floor. Core checks pin individual behaviours; without this,
-  // dimension, verdict and drift accuracy could all regress with CI still green,
-  // which is what the workflow comment used to claim it prevented.
-  const thresholds = loadThresholds(o.fixturesDir);
-  const gateFailures: string[] = [];
-  if (thresholds && !o.only) {
-    for (const d of DIMENSIONS) {
-      const floor = thresholds.min_dimension_accuracy?.[d];
-      const got = hit[d]!.total > 0 ? hit[d]!.ok / hit[d]!.total : 0;
-      if (floor !== undefined && got < floor - 1e-9) {
-        gateFailures.push(
-          `${d} accuracy ${(100 * got).toFixed(0)}% is below the recorded floor of ${(
-            100 * floor
-          ).toFixed(0)}%`,
-        );
-      }
-    }
-    if (
-      thresholds.min_verdict_accuracy !== undefined &&
-      verdictAcc < thresholds.min_verdict_accuracy - 1e-9
-    ) {
-      gateFailures.push(
-        `overall verdict accuracy ${(100 * verdictAcc).toFixed(0)}% is below the recorded floor of ${(
-          100 * thresholds.min_verdict_accuracy
-        ).toFixed(0)}%`,
-      );
-    }
-    if (
-      thresholds.min_drift_accuracy !== undefined &&
-      driftAccuracy !== null &&
-      driftAccuracy < thresholds.min_drift_accuracy - 1e-9
-    ) {
-      gateFailures.push(
-        `drift_type accuracy ${(100 * driftAccuracy).toFixed(0)}% is below the recorded floor of ${(
-          100 * thresholds.min_drift_accuracy
-        ).toFixed(0)}%`,
-      );
-    }
-  }
-  if (gateFailures.length > 0) {
-    lines.push("");
-    lines.push("threshold gate (fixtures/thresholds.json)");
-    for (const g of gateFailures) lines.push(`  [FAIL] ${g}`);
-  } else if (thresholds && !o.only) {
-    lines.push("");
-    lines.push("threshold gate (fixtures/thresholds.json): all aggregate floors met");
-  }
-
   const costs = runs.map((r) => r.cost_usd).filter((c): c is number => typeof c === "number");
   const totalCost = costs.reduce((a, b) => a + b, 0);
   const judgeMs = runs.reduce((a, r) => a + r.latency_ms, 0);
@@ -371,16 +425,31 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
   );
   void retries;
 
-  const text = lines.join("\n");
   const dimensionAccuracy: Record<string, number> = {};
   for (const d of DIMENSIONS) dimensionAccuracy[d] = hit[d]!.ok / hit[d]!.total;
 
+  const qualityGate = evaluateEvalQualityGate(
+    {
+      hardFailures: failed.length,
+      dimensions: Object.fromEntries(
+        DIMENSIONS.map((d) => [d, { ok: hit[d]!.ok, total: hit[d]!.total }]),
+      ) as Record<Dimension, EvalMetricTally>,
+      verdict: { ok: verdictOk, total: runs.length },
+      labelledDrift: labelled.length > 0 ? labelledDrift : undefined,
+    },
+    loadEvalQualityFloors(o.fixturesDir),
+  );
+  lines.push("");
+  lines.push(qualityGate.receipt);
+  const textWithGate = lines.join("\n");
+
   return {
-    text,
-    markdown: "```\n" + text + "\n```",
+    text: textWithGate,
+    markdown: "```\n" + textWithGate + "\n```",
     passedCoreChecks: allPassed,
+    passedQualityGate: qualityGate.passed,
+    qualityGateReceipt: qualityGate.receipt,
     hardFailures: failed.length,
-    gateFailures: o.noGate ? [] : gateFailures,
     dimensionAccuracy,
     verdictAccuracy: verdictAcc,
   };

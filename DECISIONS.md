@@ -16,7 +16,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **Fixtures store `base/` and `head/` directories, not a checked-in git repo.**
   Nested `.git` directories do not survive a clone. `gonogo eval` materialises a
   throwaway repo in `mkdtemp` per run.
-- **All fixtures share one base repo (`fixtures/_base`).** Six unrelated toy
+- **All seven fixtures share one base repo (`fixtures/_base`).** Seven unrelated toy
   repos would make the difference between cases a difference of subject matter rather
   than a difference of agent behaviour, which is what is being measured.
 - **`silent-narrowing` and `honest-partial` have byte-identical `head/` trees.**
@@ -39,10 +39,14 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **`gonogo calibrate` refuses to mix synthetic pairs into real statistics.**
   With no real pairs it prints them under a banner stating the numbers measure
   nothing, rather than reporting a plausible-looking figure.
+- **Standalone human ratings stay visible but are not calibration pairs.** A
+  retrospective review is evidence that review happened, not evidence of
+  judge agreement. `calibrate` lists it with its notes and waits for a matching
+  same-evidence run instead of silently dropping or statistically pairing it.
 - **Cross-fixture invariants are not expressible in `labels.json`.** The
   `silent-narrowing` / `honest-partial` task_satisfaction pairing is enforced by
   giving the two fixtures identical label ranges instead. A real paired-check
-  mechanism is not worth building at n=6.
+  mechanism is not worth building at n=7.
 - **`merged-but-wrong`'s `goal_alignment` label was corrected upward after the
   first live run**, rather than changing the prompt to match the label. The
   judge's reading was right: that agent pursued the assigned goal and executed
@@ -59,9 +63,9 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   One malformed reply in eighteen killed a whole k=3 sweep during development.
   The retry count is recorded in provenance as `rubric_parse_retries`, because
   how often a judge emits garbage is a property worth knowing about the judge.
-- **The GitHub repository could not be made public from this session.** `gh` is
-  not installed and no available tool changes repository visibility. The repo
-  exists and is private; the one command to change that is in the handover.
+- **The repository started private and was made public during PR review.** The
+  build session lacked `gh`; the maintainer review completed that release step
+  before any merge.
 - **`--max-diff-chars` exists because this repo's own first diff is 326k characters.**
   The default 120k limit would have elided the middle of it, which on a
   path-sorted diff means the fixtures get seen and `src/` does not. Raising the
@@ -81,17 +85,27 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   natural match exists (`model_version` ≈ `gen_ai.request.model`, `tokens_in` ≈
   `gen_ai.usage.input_tokens`, `tokens_out` ≈ `gen_ai.usage.output_tokens`), so
   exporting later is a mapping and not a migration. **Zero telemetry, ever:**
-  nothing in this repository sends anything anywhere, and no future version will.
+  the event pipeline never exports or phones home. A live verdict still makes
+  the explicit, documented call to the configured judge CLI.
   Revisit when there is a second operator, or when the log outgrows what a
   laptop can grep — neither is true today.
 - **The replay cache key includes the sample index.** Keying purely on
   (prompt hash, evidence hash) would collapse all k samples of one fixture into
   one entry, and `gonogo eval` would then report zero variance for a judge that
   has plenty. The stochasticity is the measurement; the key has to preserve it.
+- **Replay receipts are immutable and scoped to a judge instrument.** Backend
+  and requested model identity prevent one judge from serving another's output;
+  full hashes are checked after lookup, and `--record` reuses an exact receipt
+  instead of replacing the result CI relies on. The committed legacy v1 raw
+  replies may exercise both the 0.1.0 parser and its 0.1.1 hardening only when
+  their full prompt and evidence hashes match; those replayed events cannot enter
+  calibration. New v2 receipts remain version-scoped.
 - **An unparseable judge reply is never recorded.** The cache exists to replay
   working runs, not to make a broken one reproducible.
-- **Replayed runs are excluded from calibration.** Serving the same judgement
-  twice is not a second observation, and counting it would inflate agreement.
+- **Replayed and mixed-source runs are excluded from calibration.** Serving a
+  cached pass twice is not a second observation, and counting it would inflate
+  agreement. A mixed record-on-miss run reports only the live pass's current
+  usage and preserves both pass sources in verdict provenance.
 - **Evidence blocks are delimited with a token derived from the evidence hash.**
   Code fences are not a boundary: evidence can contain a closing fence and carry
   on in prose that reads like instruction. The token depends on a hash of the
@@ -117,58 +131,20 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   because neither is a go. `inconclusive` is 2 and tool failure is 3, so a
   caller can tell "the work is bad" from "the judge could not tell" from "the
   tool broke". No `--gate` flag: the exit code is the whole surface.
+- **Eval floors are a fail-closed, versioned fixture policy.**
+  `fixtures/thresholds.json` names the 0.1.1 instrument and every metric; a
+  missing, partial, out-of-range or wrong-version policy is a tool error rather
+  than an implicit pass. The current 100/95/100/90 dimension, 90 verdict and
+  100 drift floors are the receipt from EVAL_LOG iteration 9.
 - **`gonogo outcome` records what happened by hand; it does not talk to GitHub.**
   A GitHub integration would need credentials, network access and a webhook
   story, all to save typing one command when a PR lands.
-- **The `v0.1-freeze` tag exists locally but could not be pushed.** Tag pushes
-  are rejected by this environment's GitHub credential; branch pushes work. The
-  tag points at the commit recording the addendum eval numbers. One command from
-  a maintainer: `git push origin v0.1-freeze`. METHODS.md's instrument-versioning
-  section depends on the tag being on the remote, so this is a real loose end
-  and not a cosmetic one.
-- **Replay refuses to attribute one backend's output to another.** The cache is
-  keyed on (prompt hash, evidence hash, sample), not on who was asked, so
-  `--replay --judge qwen` used to serve claude-cli's reasoning and write an
-  event with `rater_id: "judge:qwen-cli"`. Since `qwen` is a stub that throws if
-  actually invoked, that produced a rating by a judge that has never run — and
-  in panel mode it would fabricate cross-family agreement out of a single
-  family. A cache hit whose recorded backend differs from the requested one is
-  now an error. Found by an external reviewer; see `calibration/manual-pr-1/`.
-- **A `human.json` with no `verdict.json` beside it is still a rating.**
-  `gonogo calibrate` required both files in a directory, so the first real human
-  review this repo received was read by nobody and reported as nothing, while
-  the banner went on asserting that no human had reviewed a real run yet. Ratings
-  are now discovered recursively, unpaired human ratings are printed by name with
-  their notes, and the banner is conditioned on whether a real human rating
-  exists rather than on whether a real *pair* does.
-- **Calibration stratifies by prompt version, as METHODS.md always said it did.**
-  It did not: `calibrate.ts` contained no reference to `prompt_hashes`. Agreement
-  is now reported per (rater pair, prompt signature) and never pooled across
-  versions. The document was right and the code was wrong, which is the
-  documented order of precedence.
-- **Per-dimension accuracy is deliberately not a gate.** `gonogo eval` exits
-  non-zero on a failed core check or a run that produced no verdict, never on a
-  percentage. Label ranges are expectations and a miss may mean the label is
-  wrong — one already was. Gating on them would make the labels unfalsifiable,
-  which is the opposite of what the fixture set is for.
-- **Citations are checked against the evidence, not merely counted.** "Cite or
-  abstain" was enforced by testing `citations.length === 0`, which enforces the
-  shape of the rule and none of its substance: a judge that invents a
-  plausible-looking quote passed. Every citation long enough to identify
-  (12+ characters, whitespace- and case-normalised, ellipses tolerated) is now
-  located in the evidence the judge was shown. A dimension whose citations are
-  all unfindable becomes an abstention naming the first unfound quote; a partly
-  unverifiable set keeps its score with the count recorded in the reasoning.
-- **Aggregate accuracy is gated after all, via `fixtures/thresholds.json`.**
-  The earlier entry here argued that gating on percentages would make labels
-  unfalsifiable. That reasoning was half right and the conclusion was wrong: the
-  CI workflow simultaneously *claimed* that a recorded verdict ceasing to pass
-  its labels would fail the job, which it would not, and the kickoff asked for
-  judge quality to be CI-enforced. The resolution is a recorded floor rather
-  than a fixed expectation — floors are explicit, versioned, and lowering one is
-  a logged decision, so labels stay falsifiable while regressions stop being
-  silent. Core checks remain the per-behaviour invariants.
-- **A verdict whose head equals its base says so.** Fixture and self-judge runs
-  are uncommitted worktree diffs, so `base` and `head` are the same commit. The
-  HTML rendered both as bare SHAs, which reads as "nothing changed" to anyone
-  who has not run the tool.
+- **Judge output is excluded from the next run's untracked evidence.** Run
+  artifacts live inside the target repository for the human-review flow, but
+  they are tool output, not agent work. Tracked files remain visible; only the
+  caller-declared untracked output root is excluded.
+- **The remote `v0.1-freeze` tag anchors the pre-review 0.1.0 instrument.** It
+  points at the commit recording the addendum eval numbers. Review hardening
+  changed scoring before genuine calibration began, so the reviewed tree is
+  0.1.1 and cannot pool its future ratings with 0.1.0. Preserve the tag's
+  ancestry with a merge commit rather than a squash or rebase merge.
