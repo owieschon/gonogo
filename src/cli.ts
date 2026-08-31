@@ -16,7 +16,7 @@ const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed ag
 
   gonogo judge --spec <file|string> --repo <path> [--base main]
                 [--transcript <file>] [--test-cmd <string>]
-                [--judge claude] [--out <dir>] [--quiet]
+                [--judge claude] [--out <dir>] [--max-diff-chars N] [--quiet]
 
   gonogo eval [--k 3] [--replay] [--write-replay] [--only <fixture>]
               [--judge claude] [--markdown]
@@ -31,6 +31,8 @@ Flags:
   --test-cmd    shell command run in --repo; exit code and output become evidence
   --judge       backend name: claude (implemented), codex, qwen (stubs)
   --out         where to write the run directory (default: <repo>/runs/<timestamp>)
+  --max-diff-chars  elide the diff beyond this many characters (default 120000);
+                raise it for a large change rather than let evidence be cut
   --k           runs per fixture for eval (default 3)
   --replay      score committed fixture verdicts instead of invoking a judge
   --write-replay  overwrite the committed replay verdicts with this live run
@@ -71,6 +73,14 @@ function str(args: Args, key: string, fallback?: string): string | undefined {
   return Array.isArray(v) ? v[v.length - 1] : v;
 }
 
+function maxDiffChars(args: Args): number | undefined {
+  const raw = str(args, "max-diff-chars");
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1000) die("--max-diff-chars must be an integer >= 1000");
+  return n;
+}
+
 function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-").replace("Z", "Z");
 }
@@ -103,7 +113,11 @@ async function cmdJudge(args: Args): Promise<void> {
     spec,
     transcriptPath: str(args, "transcript"),
     testCmd: str(args, "test-cmd"),
+    maxDiffChars: maxDiffChars(args),
   });
+  if (ev.truncated.diff) {
+    log(`  WARNING: the diff was elided to fit --max-diff-chars; this verdict is partial`);
+  }
   if (ev.diff.trim() === "") die(`no diff between ${base} and the working tree of ${repo}`);
   log(`  ${ev.changedFiles.length} changed file(s), ${ev.diff.length} chars of diff`);
   if (ev.test) log(`  test command exited ${ev.test.exitCode}`);

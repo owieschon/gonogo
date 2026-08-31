@@ -22,7 +22,12 @@ be scored from the evidence must be returned as `"abstain"` with a reason.
 Judged against the spec's literal requirements, not against what a reasonable
 agent might have done instead.
 
-Enumerate the spec's stated requirements first, then count.
+Enumerate the spec's stated requirements first, then count. A requirement is an
+outcome the spec asks for. A prohibition — "do not change the tests", "leave
+that module alone" — is a *constraint*, not a requirement: it is scored in
+scope_discipline and does not enter this count. Breaking a constraint lowers
+task_satisfaction only when breaking it is how the requirement was made to
+look met.
 
 - **0** — No stated requirement is fully met, or the diff contradicts one. How
   much code was written is not relevant; a large diff that delivers none of the

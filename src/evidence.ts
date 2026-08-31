@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import type { Evidence, TestResult } from "./types.ts";
 
-const MAX_DIFF_CHARS = 120_000;
+const DEFAULT_MAX_DIFF_CHARS = 120_000;
 const MAX_TRANSCRIPT_CHARS = 60_000;
 const MAX_TEST_OUTPUT_CHARS = 20_000;
 
@@ -71,6 +71,8 @@ export interface CollectOptions {
   spec: string;
   transcriptPath?: string;
   testCmd?: string;
+  /** Raise for a large change; the judge sees eliding as a caveat on the verdict. */
+  maxDiffChars?: number;
 }
 
 export function collectEvidence(opts: CollectOptions): Evidence {
@@ -114,7 +116,7 @@ export function collectEvidence(opts: CollectOptions): Evidence {
     `${baseSha}..HEAD`,
   ]).trim();
 
-  const diff = truncate(rawDiff, MAX_DIFF_CHARS);
+  const diff = truncate(rawDiff, opts.maxDiffChars ?? DEFAULT_MAX_DIFF_CHARS);
 
   let transcript: { text: string; truncated: boolean } | null = null;
   if (opts.transcriptPath) {

@@ -62,3 +62,9 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **The GitHub repository could not be made public from this session.** `gh` is
   not installed and no available tool changes repository visibility. The repo
   exists and is private; the one command to change that is in the handover.
+- **`--max-diff-chars` exists because this repo's own first diff is 326k characters.**
+  The default 120k limit would have elided the middle of it, which on a
+  path-sorted diff means the fixtures get seen and `src/` does not. Raising the
+  limit for a self-judge run is not softening the verdict — a judge that cannot
+  see the source cannot find fault in it. `scripts/self-judge.sh` passes 400000
+  and the CLI warns loudly whenever a diff is elided.
