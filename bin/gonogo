@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# gonogo launcher. Requires bun on PATH.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bun run "$here/src/cli.ts" "$@"
