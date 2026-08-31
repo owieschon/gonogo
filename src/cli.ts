@@ -156,6 +156,12 @@ async function cmdEval(args: Args): Promise<void> {
   console.log("");
   console.log(args.markdown === true ? report.markdown : report.text);
   console.log("");
+  if (report.hardFailures > 0) {
+    console.error(
+      `gonogo eval: ${report.hardFailures} run(s) produced no verdict at all. See above.`,
+    );
+    process.exit(1);
+  }
   if (!report.passedCoreChecks) {
     console.error("gonogo eval: core checks FAILED — the judge missed a case it must catch.");
     process.exit(1);

@@ -170,6 +170,9 @@ ${dims}
   <tr><th>diffstat</th><td><code>${esc(v.evidence_summary.diff_stat || "—")}</code></td></tr>
   <tr><th>test command</th><td>${testLine}</td></tr>
   <tr><th>transcript</th><td>${v.evidence_summary.transcript_present ? "provided" : "not provided"}</td></tr>
+  <tr><th>commit messages</th><td>${
+    v.evidence_summary.commits ? esc(String(v.evidence_summary.commits)) + " commit(s)" : "none"
+  }</td></tr>
 </table>
 ${
   v.evidence_summary.truncated.diff || v.evidence_summary.truncated.transcript
@@ -195,7 +198,13 @@ ${
   <tr><th>diff sha256</th><td class="mono">${esc(p.diff_sha256)}</td></tr>
   <tr><th>started</th><td class="mono">${esc(p.started_at)}</td></tr>
   <tr><th>duration</th><td class="mono">${esc((p.duration_ms / 1000).toFixed(1))}s</td></tr>
-  <tr><th>cost</th><td class="mono">${p.cost_usd === null ? "—" : "$" + p.cost_usd.toFixed(4)}</td></tr>
+  <tr><th>cost</th><td class="mono">${p.cost_usd === null ? "—" : "$" + p.cost_usd.toFixed(4)}</td></tr>${
+    p.rubric_parse_retries
+      ? `\n  <tr><th>parse retries</th><td class="mono">${esc(
+          String(p.rubric_parse_retries),
+        )} rubric-pass repl${p.rubric_parse_retries === 1 ? "y" : "ies"} discarded as unparseable and re-asked</td></tr>`
+      : ""
+  }
 </table>
 
 <footer>

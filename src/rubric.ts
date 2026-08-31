@@ -187,6 +187,7 @@ function evidenceAttachments(ev: Evidence): Attachment[] {
     { name: "CHANGED_FILES", content: ev.changedFiles.join("\n") },
     { name: "DIFFSTAT", content: ev.diffStat },
   ];
+  att.push({ name: "COMMIT_MESSAGES", content: ev.commitMessages });
   att.push({ name: "TRANSCRIPT", content: ev.transcript ?? "" });
   att.push({
     name: "TEST_RESULT",
@@ -202,10 +203,16 @@ export interface JudgeRunResult {
   raw: { blind: string; rubric: string };
 }
 
+export interface RunJudgeOptions {
+  /** Extra rubric-pass attempts allowed when the reply will not parse. */
+  parseRetries?: number;
+}
+
 export async function runJudge(
   ev: Evidence,
   backend: JudgeBackend,
   promptsDir: string,
+  opts: RunJudgeOptions = {},
 ): Promise<JudgeRunResult> {
   const blindPrompt = join(promptsDir, "blind-pass.md");
   const rubricPrompt = join(promptsDir, "rubric-pass.md");
@@ -220,13 +227,34 @@ export async function runJudge(
   ]);
   const inferredGoal = blind.text.trim();
 
-  // Pass 2 sees everything, including what pass 1 concluded.
-  const rubric = await backend.invoke(rubricPrompt, [
-    { name: "SPEC", content: ev.spec },
-    { name: "INFERRED_GOAL", content: inferredGoal },
-    ...evidenceAttachments(ev),
-  ]);
-  const parsed = parseRubricPass(rubric.text);
+  // Pass 2 sees everything, including what pass 1 concluded. Judges occasionally
+  // emit a reply that will not parse — an unescaped quote inside a citation is
+  // the usual cause. One bad reply should not lose the run, so ask again; the
+  // retry count is recorded in provenance rather than swallowed, because how
+  // often a judge does this is a property worth knowing about the judge.
+  const attempts = Math.max(1, (opts.parseRetries ?? 1) + 1);
+  let rubric: Awaited<ReturnType<JudgeBackend["invoke"]>> | undefined;
+  let parsed: RubricPass | undefined;
+  let retries = 0;
+  let extraCost = 0;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const reply = await backend.invoke(rubricPrompt, [
+      { name: "SPEC", content: ev.spec },
+      { name: "INFERRED_GOAL", content: inferredGoal },
+      ...evidenceAttachments(ev),
+    ]);
+    try {
+      parsed = parseRubricPass(reply.text);
+      rubric = reply;
+      break;
+    } catch (err) {
+      lastError = err;
+      retries++;
+      extraCost += reply.costUsd ?? 0;
+    }
+  }
+  if (!parsed || !rubric) throw lastError;
   const finishedAt = new Date();
 
   const dims: Record<Dimension, DimensionResult> = {
@@ -240,7 +268,7 @@ export async function runJudge(
   const cost =
     blind.costUsd === null && rubric.costUsd === null
       ? null
-      : (blind.costUsd ?? 0) + (rubric.costUsd ?? 0);
+      : (blind.costUsd ?? 0) + (rubric.costUsd ?? 0) + extraCost;
 
   const verdictFile: VerdictFile = {
     schema: "gonogo/verdict@1",
@@ -256,6 +284,7 @@ export async function runJudge(
       diff_stat: ev.diffStat,
       test: ev.test ? { command: ev.test.command, exit_code: ev.test.exitCode } : null,
       transcript_present: ev.transcript !== null,
+      commits: ev.commitMessages ? ev.commitMessages.split("\ncommit ").length : 0,
       truncated: ev.truncated,
     },
     provenance: {
@@ -276,6 +305,7 @@ export async function runJudge(
       head: ev.head,
       spec_sha256: sha256(ev.spec),
       diff_sha256: sha256(ev.diff),
+      rubric_parse_retries: retries,
     },
   };
 
