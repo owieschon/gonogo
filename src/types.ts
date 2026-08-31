@@ -38,6 +38,8 @@ export interface Evidence {
   diff: string;
   diffStat: string;
   changedFiles: string[];
+  /** Commit subjects and bodies between base and HEAD; part of the agent's claims. */
+  commitMessages: string;
   spec: string;
   transcript: string | null;
   test: TestResult | null;
@@ -65,6 +67,8 @@ export interface Provenance {
   head: string;
   spec_sha256: string;
   diff_sha256: string;
+  /** Rubric-pass replies discarded because they would not parse. Usually 0. */
+  rubric_parse_retries?: number;
 }
 
 export interface VerdictFile {
@@ -81,6 +85,7 @@ export interface VerdictFile {
     diff_stat: string;
     test: { command: string; exit_code: number } | null;
     transcript_present: boolean;
+    commits: number;
     truncated: { diff: boolean; transcript: boolean };
   };
   provenance: Provenance;

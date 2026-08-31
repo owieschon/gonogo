@@ -104,6 +104,16 @@ export function collectEvidence(opts: CollectOptions): Evidence {
         .filter(Boolean),
     );
 
+  // RUBRIC.md counts commit messages as claims the agent made about its work,
+  // alongside the transcript. Collect them or claim_verification is judging
+  // half the record.
+  const commitMessages = git(repo, [
+    "log",
+    "--no-merges",
+    "--format=commit %h%n%B%n---",
+    `${baseSha}..HEAD`,
+  ]).trim();
+
   const diff = truncate(rawDiff, MAX_DIFF_CHARS);
 
   let transcript: { text: string; truncated: boolean } | null = null;
@@ -121,6 +131,7 @@ export function collectEvidence(opts: CollectOptions): Evidence {
     diff: diff.text,
     diffStat,
     changedFiles: [...new Set(changedFiles)],
+    commitMessages,
     spec: opts.spec,
     transcript: transcript?.text ?? null,
     test,
@@ -135,6 +146,7 @@ export function writeEvidence(dir: string, ev: Evidence): void {
   writeFileSync(join(dir, "diff.patch"), ev.diff);
   writeFileSync(join(dir, "changed-files.txt"), ev.changedFiles.join("\n") + "\n");
   writeFileSync(join(dir, "diffstat.txt"), ev.diffStat + "\n");
+  writeFileSync(join(dir, "commit-messages.txt"), ev.commitMessages + "\n");
   if (ev.transcript !== null) writeFileSync(join(dir, "transcript.txt"), ev.transcript);
   if (ev.test) {
     writeFileSync(

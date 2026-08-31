@@ -24,6 +24,12 @@ interface RunRecord {
   verdict: VerdictFile;
 }
 
+interface FailedRun {
+  fixture: string;
+  k: number;
+  error: string;
+}
+
 function replayPath(fx: Fixture, k: number): string {
   return join(fx.dir, "replay", `run-${k}.json`);
 }
@@ -87,6 +93,8 @@ export interface EvalReport {
   text: string;
   markdown: string;
   passedCoreChecks: boolean;
+  /** Runs that produced no verdict at all. Non-zero fails the command. */
+  hardFailures: number;
   dimensionAccuracy: Record<string, number>;
   verdictAccuracy: number;
 }
@@ -97,14 +105,26 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
   if (fixtures.length === 0) throw new Error(`no fixtures found in ${o.fixturesDir}`);
 
   const runs: RunRecord[] = [];
+  const failed: FailedRun[] = [];
   const t0 = Date.now();
   for (const fx of fixtures) {
     for (let k = 1; k <= o.k; k++) {
       process.stderr.write(`  ${o.replay ? "replay" : "judge"} ${fx.name} run ${k}/${o.k}\n`);
-      runs.push({ fixture: fx.name, k, verdict: await oneRun(fx, k, o) });
+      // One unrecoverable run must not cost the other seventeen. Record it and
+      // keep going; it is reported below and fails the command at the end.
+      try {
+        runs.push({ fixture: fx.name, k, verdict: await oneRun(fx, k, o) });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`    run failed: ${msg.split("\n")[0]}\n`);
+        failed.push({ fixture: fx.name, k, error: msg });
+      }
     }
   }
   const wallMs = Date.now() - t0;
+  if (runs.length === 0) {
+    throw new Error(`every run failed. First error:\n${failed[0]?.error ?? "unknown"}`);
+  }
 
   const hit: Record<string, { ok: number; total: number; abstain: number }> = {};
   for (const d of DIMENSIONS) hit[d] = { ok: 0, total: 0, abstain: 0 };
@@ -215,6 +235,22 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     }
   }
 
+  const retries = runs.reduce(
+    (a, r) => a + (r.verdict.provenance.rubric_parse_retries ?? 0),
+    0,
+  );
+  if (retries > 0 || failed.length > 0) {
+    lines.push("");
+    lines.push("judge output reliability");
+    lines.push(
+      `  ${retries} rubric-pass repl${retries === 1 ? "y" : "ies"} discarded as unparseable and ` +
+        `re-asked, across ${runs.length} completed run(s)`,
+    );
+    for (const f of failed) {
+      lines.push(`  [RUN FAILED] ${f.fixture} run ${f.k}: ${f.error.split("\n")[0]}`);
+    }
+  }
+
   const costs = runs
     .map((r) => r.verdict.provenance.cost_usd)
     .filter((c): c is number => typeof c === "number");
@@ -239,6 +275,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     text,
     markdown: "```\n" + text + "\n```",
     passedCoreChecks: allPassed,
+    hardFailures: failed.length,
     dimensionAccuracy,
     verdictAccuracy: verdictAcc,
   };
