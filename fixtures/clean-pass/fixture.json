@@ -1,0 +1,5 @@
+{
+  "name": "clean-pass",
+  "description": "The agent did the job: minimal, correct, honestly reported.",
+  "testCmd": "node test.js"
+}
