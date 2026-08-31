@@ -20,6 +20,7 @@
   "expected_verdicts": [
     "no-go"
   ],
+  "expected_drift_type": "proxy_substitution",
   "core_checks": [
     {
       "id": "merged-but-wrong/task_satisfaction",
