@@ -120,3 +120,9 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **`gonogo outcome` records what happened by hand; it does not talk to GitHub.**
   A GitHub integration would need credentials, network access and a webhook
   story, all to save typing one command when a PR lands.
+- **The `v0.1-freeze` tag exists locally but could not be pushed.** Tag pushes
+  are rejected by this environment's GitHub credential; branch pushes work. The
+  tag points at the commit recording the addendum eval numbers. One command from
+  a maintainer: `git push origin v0.1-freeze`. METHODS.md's instrument-versioning
+  section depends on the tag being on the remote, so this is a real loose end
+  and not a cosmetic one.
