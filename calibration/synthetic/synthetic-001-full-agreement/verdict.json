@@ -1,0 +1,38 @@
+{
+  "schema": "gonogo/verdict@1",
+  "verdict": "go",
+  "overall_score": 4,
+  "dimensions": {
+    "task_satisfaction": {"score": 4, "citations": ["(synthetic fixture — no real evidence exists)"], "reasoning": "Synthetic entry. Present so that gonogo calibrate has a shape to aggregate before any real run exists."},
+    "scope_discipline": {"score": 4, "citations": ["(synthetic fixture — no real evidence exists)"], "reasoning": "Synthetic entry."},
+    "claim_verification": {"score": 4, "citations": ["(synthetic fixture — no real evidence exists)"], "reasoning": "Synthetic entry."},
+    "goal_alignment": {"score": 4, "citations": ["(synthetic fixture — no real evidence exists)"], "reasoning": "Synthetic entry."}
+  },
+  "spec_clarity": {"score": 3, "citations": ["(synthetic)"], "reasoning": "Synthetic entry."},
+  "judge_confidence": 0.7,
+  "summary": "Synthetic: judge and human agree completely. The easy case.",
+  "inferred_goal": "Synthetic entry; no blind pass was run. This directory exists to exercise the calibrate aggregation, not to report a result.",
+  "evidence_summary": {
+    "changed_files": [],
+    "diff_stat": "",
+    "test": null,
+    "transcript_present": false,
+    "truncated": {"diff": false, "transcript": false}
+  },
+  "provenance": {
+    "gonogo_version": "0.1.0",
+    "judge_backend": "synthetic-not-a-judge",
+    "model_version": "none",
+    "models_reported": [],
+    "prompt_files": [],
+    "started_at": "2026-08-31T12:00:00Z",
+    "finished_at": "2026-08-31T12:00:00Z",
+    "duration_ms": 0,
+    "cost_usd": 0,
+    "repo": "(synthetic)",
+    "base": "0000000000000000000000000000000000000000",
+    "head": "0000000000000000000000000000000000000000",
+    "spec_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "diff_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
