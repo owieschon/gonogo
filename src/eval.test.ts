@@ -147,7 +147,7 @@ test("live eval without --record retains a run-local citation-repair receipt", (
         evidenceHash: "b".repeat(64),
         sample: 2,
         backend: "claude-cli",
-        instrumentVersion: "0.1.4",
+        instrumentVersion: GONOGO_VERSION,
         model: "claude-sonnet-5",
       },
       {

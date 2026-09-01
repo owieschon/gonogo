@@ -13,6 +13,7 @@ import type {
   JudgeResponse,
 } from "./judges/types.ts";
 import type { Evidence } from "./types.ts";
+import { GONOGO_VERSION } from "./version.ts";
 
 const roots: string[] = [];
 const RUBRIC_SCHEMA_CONTENT = readFileSync(
@@ -458,12 +459,12 @@ describe("rubric response validation", () => {
       key: {
         sample: 1,
         backend: "queue-backend",
-        instrumentVersion: "0.1.4",
+        instrumentVersion: GONOGO_VERSION,
         model: "queue-model",
       },
       model_version: "repair-model",
       backend: "queue-backend",
-      instrument_version: "0.1.4",
+      instrument_version: GONOGO_VERSION,
       latency_ms: 1,
       cost_usd: 0.1,
       tokens_in: 10,
