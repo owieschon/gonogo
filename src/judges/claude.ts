@@ -13,16 +13,18 @@ import { renderPrompt } from "./types.ts";
 /**
  * The CLI loads project settings, MCP servers and its full tool surface by
  * default. A judge needs none of that, and it costs ~34k prompt tokens per
- * call, so every extra is switched off explicitly.
+ * call, so bare mode and an empty tool surface make the scripting boundary
+ * explicit.
  */
 const LEAN_FLAGS = [
+  "--bare",
   "-p",
   "--output-format",
   "json",
   "--strict-mcp-config",
   "--mcp-config",
   '{"mcpServers":{}}',
-  "--allowed-tools",
+  "--tools",
   "",
   "--setting-sources",
   "",
