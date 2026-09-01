@@ -64,9 +64,12 @@ These are law, not style.
 - **I7 — Provenance.** Every new verdict carries two distinct identities:
   `subject_hash` binds the complete operator/worker evidence before truncation,
   while the judge-call evidence hashes bind the rendered attachments used for
-  replay. Model version, prompt hashes, tool version and timestamps complete the
-  receipt. Recollecting the subject deterministically establishes whether a
-  verdict is current without asking a model.
+  replay. Each completed blind, rubric, or citation-correction call is also
+  bound to an immutable replay-compatible receipt before downstream validation;
+  terminal validation evidence is retained beside it. Model version, prompt
+  hashes, tool version and timestamps complete the receipt. Recollecting the
+  subject deterministically establishes whether a verdict is current without
+  asking a model.
 
 ## Known limits
 

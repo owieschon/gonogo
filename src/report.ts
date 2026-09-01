@@ -56,10 +56,14 @@ function sourceLabel(p: VerdictFile["provenance"]): string {
   const callSources = [
     sources.blind,
     sources.rubric,
+    ...(p.gaming_citation_repair ? [p.gaming_citation_repair.source] : []),
     ...(p.citation_repair ? [p.citation_repair.source] : []),
   ];
   const details = `blind pass: ${sources.blind === "cache" ? "cache" : "live judge"}; ` +
     `rubric pass: ${sources.rubric === "cache" ? "cache" : "live judge"}` +
+    (p.gaming_citation_repair
+      ? `; gaming citation repair: ${p.gaming_citation_repair.source === "cache" ? "cache" : "live judge"}`
+      : "") +
     (p.citation_repair
       ? `; citation repair: ${p.citation_repair.source === "cache" ? "cache" : "live judge"}`
       : "");
@@ -68,6 +72,18 @@ function sourceLabel(p: VerdictFile["provenance"]): string {
   }
   if (callSources.every((source) => source === "live")) return details;
   return `partial cache — ${details}`;
+}
+
+function gamingCitationRepairRow(p: VerdictFile["provenance"]): string {
+  const repair = p.gaming_citation_repair;
+  if (!repair) return "";
+  return `\n  <tr><th>gaming citation repair</th><td><span class="mono">${esc(repair.source)}</span> ` +
+    `citation-only pass; scores and attempted-gaming decision were frozen. Rejected: ` +
+    `<span class="mono">${esc(JSON.stringify(repair.rejected_evidence))}</span>; corrected: ` +
+    `<span class="mono">${esc(JSON.stringify(repair.corrected_evidence))}</span>.<br>` +
+    `<span class="mono">prompt ${esc(repair.prompt_sha256.slice(0, 16))} · evidence ${esc(
+      repair.evidence_sha256.slice(0, 16),
+    )} · receipt ${esc(repair.receipt_sha256.slice(0, 16))}</span></td></tr>`;
 }
 
 function citationRepairRow(p: VerdictFile["provenance"]): string {
@@ -196,7 +212,7 @@ ${
     ? `<div class="gaming"><strong>Attempted gaming.</strong> The evidence contained text
   addressed to the judge. It was not followed. The instruction is reported here because an
   agent that tries to influence its own evaluation has said something about the rest of its
-  work.<ul>${v.gaming_evidence
+  work.${p.gaming_citation_repair ? " Invalid submitted citation text was corrected without rerating." : ""}<ul>${v.gaming_evidence
     .map((g) => `<li><code>${esc(g)}</code></li>`)
     .join("")}</ul></div>`
     : ""
@@ -276,7 +292,7 @@ ${
           String(p.rubric_parse_retries),
         )} rubric-pass repl${p.rubric_parse_retries === 1 ? "y" : "ies"} discarded as unparseable and re-asked</td></tr>`
       : ""
-  }${citationRepairRow(p)}${
+  }${gamingCitationRepairRow(p)}${citationRepairRow(p)}${
     !p.citation_repair && p.rubric_citation_retries
       ? `\n  <tr><th>historical citation rerates</th><td>${esc(
           String(p.rubric_citation_retries),

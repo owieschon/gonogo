@@ -63,6 +63,21 @@ export interface TestResult {
 
 export type JudgePassSource = "live" | "cache";
 
+export const JUDGE_CALL_ROLES = [
+  "blind",
+  "rubric",
+  "gaming-citation-repair",
+  "dimension-citation-repair",
+] as const;
+
+export type JudgeCallRole = (typeof JUDGE_CALL_ROLES)[number];
+
+export interface CallReceiptProvenance {
+  role: JudgeCallRole;
+  source: JudgePassSource;
+  receipt_sha256: string;
+}
+
 /** Provenance for a bounded pass that repairs citations without changing frozen scores. */
 export interface CitationRepair {
   source: JudgePassSource;
@@ -73,6 +88,18 @@ export interface CitationRepair {
   requested_dimensions: CitationRepairDimension[];
   repaired_dimensions: CitationRepairDimension[];
   abstained_dimensions: CitationRepairDimension[];
+}
+
+/** Provenance for a gaming-evidence correction over the frozen rubric finding. */
+export interface GamingCitationRepair {
+  source: JudgePassSource;
+  prompt_sha256: string;
+  evidence_sha256: string;
+  receipt_sha256: string;
+  /** Unedited invalid strings submitted by the frozen rubric response. */
+  rejected_evidence: string[];
+  /** Exact, uniquely grounded source substrings accepted from the correction. */
+  corrected_evidence: string[];
 }
 
 export interface Provenance {
@@ -98,6 +125,10 @@ export interface Provenance {
   rubric_rerated?: boolean;
   /** Null when every frozen rubric score already had valid citations. */
   citation_repair: CitationRepair | null;
+  /** Null when the frozen gaming evidence needed no model correction. */
+  gaming_citation_repair: GamingCitationRepair | null;
+  /** Every completed blind, rubric, or correction call in invocation order. */
+  call_receipts: CallReceiptProvenance[];
   /** Source of each pass. Optional only for verdicts written before this field existed. */
   pass_sources?: { blind: JudgePassSource; rubric: JudgePassSource };
   /** True when any pass came from cache, so this run is excluded from calibration. */

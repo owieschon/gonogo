@@ -8,6 +8,7 @@ import type {
   Dimension,
   DimensionResult,
   Evidence,
+  JudgeCallRole,
   RubricPass,
   Verdict,
   VerdictFile,
@@ -28,6 +29,7 @@ import {
   writeCache,
 } from "./replay.ts";
 import type { CacheEntry, CacheKey, CachePayload } from "./replay.ts";
+import type { CallEvidenceSink, CallFailureStage } from "./call-receipts.ts";
 
 export function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -430,22 +432,23 @@ function rubricCitationFailures(
 function parseStructuredCitationRepair(
   text: string,
   schema: StructuredOutputSchema,
-): CitationRepairOutput {
+  label = "citation-repair",
+): CitationRepairOutput | GamingCitationRepairOutput {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
     throw new Error(
-      `judge did not return strict citation-repair JSON. First 800 chars:\n${text.slice(0, 800)}`,
+      `judge did not return strict ${label} JSON. First 800 chars:\n${text.slice(0, 800)}`,
     );
   }
   const errors = schemaErrors(raw, schema, schema);
   if (errors.length > 0) {
     throw new Error(
-      `judge returned schema-invalid citation-repair output: ${errors.slice(0, 5).join("; ")}`,
+      `judge returned schema-invalid ${label} output: ${errors.slice(0, 5).join("; ")}`,
     );
   }
-  return raw as CitationRepairOutput;
+  return raw as CitationRepairOutput | GamingCitationRepairOutput;
 }
 
 function citationAbstention(
@@ -539,6 +542,15 @@ function applyCitationRepair(
 
 const GAMING_SOURCE_NAMES = new Set(["DIFF", "COMMIT_MESSAGES", "TRANSCRIPT"]);
 
+interface GamingCitationFailure {
+  original_index: number;
+  text: string;
+}
+
+interface GamingCitationRepairOutput {
+  repairs: { original_index: number; citations: string[] }[];
+}
+
 /**
  * Repair one observed transcript-rendering quirk and nothing broader: a
  * single ASCII space may stand for one continuation boundary emitted as a
@@ -618,6 +630,108 @@ export function verifyGamingEvidence(
   return { ...pass, attempted_gaming: true, gaming_evidence: grounded };
 }
 
+function inspectGamingEvidence(
+  pass: RubricPass,
+  attachments: Attachment[],
+): { pass: RubricPass; failures: GamingCitationFailure[] } {
+  if (!pass.attempted_gaming && pass.gaming_evidence.length === 0) {
+    return { pass, failures: [] };
+  }
+  const sources = attachments.filter((attachment) => GAMING_SOURCE_NAMES.has(attachment.name));
+  const transcripts = sources.filter((attachment) => attachment.name === "TRANSCRIPT");
+  const evidence = [...pass.gaming_evidence];
+  const failures: GamingCitationFailure[] = [];
+
+  for (const [index, quote] of evidence.entries()) {
+    if (quote.trim() !== "" && sources.some((source) => source.content.includes(quote))) continue;
+    const candidates = transcriptContinuationCandidates(quote, transcripts);
+    if (candidates.length === 1) {
+      evidence[index] = candidates[0]!;
+    } else {
+      failures.push({ original_index: index, text: quote });
+    }
+  }
+  if (evidence.length === 0) failures.push({ original_index: 0, text: "" });
+  return {
+    pass: { ...pass, attempted_gaming: true, gaming_evidence: evidence },
+    failures,
+  };
+}
+
+function sourceOccurrences(citation: string, sources: Attachment[]): number {
+  let count = 0;
+  for (const source of sources) {
+    let offset = 0;
+    while (offset <= source.content.length - citation.length) {
+      const found = source.content.indexOf(citation, offset);
+      if (found === -1) break;
+      count++;
+      offset = found + 1;
+    }
+  }
+  return count;
+}
+
+function applyGamingCitationRepair(
+  pass: RubricPass,
+  failures: GamingCitationFailure[],
+  output: GamingCitationRepairOutput,
+  attachments: Attachment[],
+): { pass: RubricPass; corrected: string[] } {
+  if (output.repairs.length !== failures.length) {
+    throw new Error(
+      `gaming citation repair returned ${output.repairs.length} entries for ${failures.length} failures`,
+    );
+  }
+  const expected = new Set(failures.map((failure) => failure.original_index));
+  const seen = new Set<number>();
+  const replacements = new Map<number, string[]>();
+  const sources = attachments.filter((attachment) => GAMING_SOURCE_NAMES.has(attachment.name));
+  for (const repair of output.repairs) {
+    if (!expected.has(repair.original_index)) {
+      throw new Error(`gaming citation repair returned unrequested index ${repair.original_index}`);
+    }
+    if (seen.has(repair.original_index)) {
+      throw new Error(`gaming citation repair duplicated index ${repair.original_index}`);
+    }
+    seen.add(repair.original_index);
+    if (repair.citations.length === 0) {
+      throw new Error(`gaming citation repair returned zero exact citations for index ${repair.original_index}`);
+    }
+    for (const citation of repair.citations) {
+      if (citation.trim() === "" || citation.includes("\n") || citation.includes("\r")) {
+        throw new Error(`gaming citation repair returned a blank or multiline citation`);
+      }
+      const occurrences = sourceOccurrences(citation, sources);
+      if (occurrences !== 1) {
+        throw new Error(
+          `gaming citation repair returned citation with ${occurrences} exact source occurrences; expected 1`,
+        );
+      }
+    }
+    replacements.set(repair.original_index, [...repair.citations]);
+  }
+
+  const corrected: string[] = [];
+  const evidence: string[] = [];
+  for (const [index, quote] of pass.gaming_evidence.entries()) {
+    const replacement = replacements.get(index);
+    if (replacement) {
+      evidence.push(...replacement);
+      corrected.push(...replacement);
+    } else {
+      evidence.push(quote);
+    }
+  }
+  if (pass.gaming_evidence.length === 0) {
+    const replacement = replacements.get(0) ?? [];
+    evidence.push(...replacement);
+    corrected.push(...replacement);
+  }
+  if (evidence.length === 0) throw new Error("gaming citation repair left no exact evidence");
+  return { pass: { ...pass, attempted_gaming: true, gaming_evidence: evidence }, corrected };
+}
+
 function evidenceAttachments(ev: Evidence): Attachment[] {
   const att: Attachment[] = [
     { name: "DIFF", content: ev.diff, lang: "diff" },
@@ -637,7 +751,12 @@ function evidenceAttachments(ev: Evidence): Attachment[] {
 
 export interface JudgeRunResult {
   verdictFile: VerdictFile;
-  raw: { blind: string; rubric: string; citation_repair?: string };
+  raw: {
+    blind: string;
+    rubric: string;
+    citation_repair?: string;
+    gaming_citation_repair?: string;
+  };
   /** Run-local receipt for the citation-only call; absent when no repair ran. */
   citationRepairReceipt?: CacheEntry;
   event: JudgeEvent;
@@ -662,6 +781,8 @@ export interface RunJudgeOptions {
   disclosure?: Disclosure;
   /** Called synchronously after a repair response is obtained and before it is parsed. */
   onCitationRepairReceipt?: (receipt: CacheEntry) => void;
+  /** Receives every completed call receipt and every terminal call-stage error. */
+  callEvidenceSink?: CallEvidenceSink;
 }
 
 /** Stable identity for one evidence packet, used as the replay cache key. */
@@ -675,6 +796,8 @@ interface CachedCall {
   fromCache: boolean;
   /** Exact replay receipt on a cache hit. */
   cacheEntry?: CacheEntry;
+  /** Stable receipt bytes retained for this call, including live calls. */
+  receipt?: CacheEntry;
 }
 
 interface StructuredCall {
@@ -688,6 +811,7 @@ interface StructuredCall {
  * invoked at all; a miss is an error naming the key, never a silent live call.
  */
 async function call(
+  role: JudgeCallRole,
   backend: JudgeBackend,
   promptFile: string,
   attachments: Attachment[],
@@ -715,18 +839,8 @@ async function call(
   if (cacheDir) {
     const hit = readCache(cacheDir, key);
     if (!hit && opts.replayDir) throw new Error(describeMiss(opts.replayDir, key));
-    if (!hit) {
-      return {
-        key,
-        fromCache: false,
-        response: await backend.invoke(
-          promptFile,
-          attachments,
-          structured ? { structuredSchema: structured.schema } : undefined,
-        ),
-      };
-    }
-    return {
+    if (!hit) return invokeAndRetain(role, backend, promptFile, attachments, key, opts, structured);
+    const result: CachedCall = {
       key,
       fromCache: true,
       cacheEntry: hit,
@@ -740,16 +854,35 @@ async function call(
         tokensOut: hit.tokens_out,
       },
     };
+    retainOrFail(role, backend, result, opts);
+    return result;
   }
-  return {
-    key,
-    fromCache: false,
-    response: await backend.invoke(
+  return invokeAndRetain(role, backend, promptFile, attachments, key, opts, structured);
+}
+
+async function invokeAndRetain(
+  role: JudgeCallRole,
+  backend: JudgeBackend,
+  promptFile: string,
+  attachments: Attachment[],
+  key: CacheKey,
+  opts: RunJudgeOptions,
+  structured?: StructuredCall,
+): Promise<CachedCall> {
+  let response: JudgeResponse;
+  try {
+    response = await backend.invoke(
       promptFile,
       attachments,
       structured ? { structuredSchema: structured.schema } : undefined,
-    ),
-  };
+    );
+  } catch (error) {
+    retainFailure(opts, role, "backend", key, null, error);
+    throw error;
+  }
+  const result: CachedCall = { key, fromCache: false, response };
+  retainOrFail(role, backend, result, opts);
+  return result;
 }
 
 function cachePayload(
@@ -771,20 +904,82 @@ function cachePayload(
 
 function callReceipt(backend: JudgeBackend, callResult: CachedCall): CacheEntry {
   return (
+    callResult.receipt ??
     callResult.cacheEntry ??
     buildCacheEntry(callResult.key, cachePayload(backend, callResult.response))
   );
 }
 
-function record(
-  opts: RunJudgeOptions,
+function retainCall(
+  role: JudgeCallRole,
   backend: JudgeBackend,
-  key: CacheKey,
-  r: JudgeResponse,
-  receipt?: CacheEntry,
+  callResult: CachedCall,
+  opts: RunJudgeOptions,
 ): void {
-  if (!opts.recordDir) return;
-  writeCache(opts.recordDir, key, cachePayload(backend, r, receipt?.recorded_at));
+  const receipt = callReceipt(backend, callResult);
+  callResult.receipt = receipt;
+  opts.callEvidenceSink?.receipt(role, receipt, callResult.fromCache ? "cache" : "live");
+  if (role === "dimension-citation-repair") opts.onCitationRepairReceipt?.(receipt);
+  if (opts.recordDir && !callResult.fromCache) {
+    writeCache(
+      opts.recordDir,
+      callResult.key,
+      cachePayload(backend, callResult.response, receipt.recorded_at),
+    );
+  }
+}
+
+function retainOrFail(
+  role: JudgeCallRole,
+  backend: JudgeBackend,
+  callResult: CachedCall,
+  opts: RunJudgeOptions,
+): void {
+  try {
+    retainCall(role, backend, callResult, opts);
+  } catch (error) {
+    const digest = callResult.receipt
+      ? sha256(serializeCacheEntry(callResult.receipt))
+      : null;
+    retainFailure(opts, role, "receipt", callResult.key, digest, error);
+    throw error;
+  }
+}
+
+function retainFailure(
+  opts: RunJudgeOptions,
+  role: JudgeCallRole,
+  stage: CallFailureStage,
+  key: CacheKey,
+  receiptSha256: string | null,
+  error: unknown,
+): void {
+  opts.callEvidenceSink?.failure({
+    schema: "gonogo/call-failure@1",
+    role,
+    stage,
+    recorded_at: new Date().toISOString(),
+    key,
+    receipt_sha256: receiptSha256,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+function validateRetainedCall<T>(
+  opts: RunJudgeOptions,
+  role: JudgeCallRole,
+  stage: "parse" | "validation",
+  backend: JudgeBackend,
+  callResult: CachedCall,
+  validate: () => T,
+): T {
+  try {
+    return validate();
+  } catch (error) {
+    const digest = sha256(serializeCacheEntry(callReceipt(backend, callResult)));
+    retainFailure(opts, role, stage, callResult.key, digest, error);
+    throw error;
+  }
 }
 
 export async function runJudge(
@@ -798,6 +993,8 @@ export async function runJudge(
   const rubricSchemaFile = join(promptsDir, "rubric-pass.schema.json");
   const citationRepairPrompt = join(promptsDir, "citation-repair.md");
   const citationRepairSchemaFile = join(promptsDir, "citation-repair.schema.json");
+  const gamingCitationRepairPrompt = join(promptsDir, "gaming-citation-repair.md");
+  const gamingCitationRepairSchemaFile = join(promptsDir, "gaming-citation-repair.schema.json");
   const rubricSchemaContent = readFileSync(rubricSchemaFile, "utf8");
   const rubricSchemaValue: unknown = JSON.parse(rubricSchemaContent);
   if (
@@ -824,18 +1021,48 @@ export async function runJudge(
     schema: citationRepairSchemaValue as StructuredOutputSchema,
     schemaContent: citationRepairSchemaContent,
   };
+  const gamingCitationRepairSchemaContent = readFileSync(gamingCitationRepairSchemaFile, "utf8");
+  const gamingCitationRepairSchemaValue: unknown = JSON.parse(gamingCitationRepairSchemaContent);
+  if (
+    gamingCitationRepairSchemaValue === null ||
+    typeof gamingCitationRepairSchemaValue !== "object" ||
+    Array.isArray(gamingCitationRepairSchemaValue)
+  ) {
+    throw new Error(`${gamingCitationRepairSchemaFile} must contain a JSON Schema object`);
+  }
+  const gamingCitationRepairStructured: StructuredCall = {
+    schema: gamingCitationRepairSchemaValue as StructuredOutputSchema,
+    schemaContent: gamingCitationRepairSchemaContent,
+  };
   const sample = opts.sample ?? 1;
   const startedAt = new Date();
   const runId = opts.runId ?? `${startedAt.toISOString().replace(/[:.]/g, "-")}-${sample}`;
   const t0 = Date.now();
+  const retainedCalls: {
+    role: JudgeCallRole;
+    receipt: CacheEntry;
+    source: "live" | "cache";
+  }[] = [];
+  const externalSink = opts.callEvidenceSink;
+  const runOpts: RunJudgeOptions = {
+    ...opts,
+    callEvidenceSink: {
+      receipt(role, receipt, source) {
+        retainedCalls.push({ role, receipt, source });
+        externalSink?.receipt(role, receipt, source);
+      },
+      failure(failure) {
+        externalSink?.failure(failure);
+      },
+    },
+  };
 
   // Pass 1 sees the work and never the spec. I2 is enforced by the type: the
   // only way to build these attachments is from a BlindPacket, and the only
   // constructor for one copies across the diff and the transcript.
-  const blindCall = await call(backend, blindPrompt, blindAttachments(blindPacket(ev)), sample, opts);
+  const blindCall = await call("blind", backend, blindPrompt, blindAttachments(blindPacket(ev)), sample, runOpts);
   const blind = blindCall.response;
   const inferredGoal = blind.text.trim();
-  if (!blindCall.fromCache) record(opts, backend, blindCall.key, blind);
 
   // Pass 2 sees everything, including what pass 1 concluded. The first
   // schema-valid response is the frozen substantive rating. Citation repair is
@@ -846,20 +1073,72 @@ export async function runJudge(
     ...evidenceAttachments(ev),
   ];
   const rubricCall = await call(
+    "rubric",
     backend,
     rubricPrompt,
     rubricAttachments,
     sample,
-    opts,
+    runOpts,
     rubricStructured,
   );
   const rubric = rubricCall.response;
-  const strictRubric = parseStructuredRubric(rubric.text, rubricStructured.schema);
-  // Persist the frozen rating before any semantic validation. A gaming or
-  // citation failure must never cause a second substantive rating.
-  if (!rubricCall.fromCache) record(opts, backend, rubricCall.key, rubric);
+  const strictRubric = validateRetainedCall(
+    runOpts,
+    "rubric",
+    "parse",
+    backend,
+    rubricCall,
+    () => parseStructuredRubric(rubric.text, rubricStructured.schema),
+  );
 
-  let parsed = verifyGamingEvidence(strictRubric.pass, rubricAttachments);
+  let gamingInspection = inspectGamingEvidence(strictRubric.pass, rubricAttachments);
+  let parsed = gamingInspection.pass;
+  let gamingCitationRepairCall: CachedCall | undefined;
+  let gamingCitationRepairReceiptSha256: string | undefined;
+  let correctedGamingEvidence: string[] = [];
+  if (gamingInspection.failures.length > 0) {
+    const failureList = JSON.stringify({ failures: gamingInspection.failures }, null, 2);
+    const repairAttachments: Attachment[] = [
+      { name: "FROZEN_RUBRIC_JSON", content: rubric.text, lang: "json" },
+      { name: "GAMING_CITATION_FAILURES", content: failureList, lang: "json" },
+      ...rubricAttachments,
+    ];
+    gamingCitationRepairCall = await call(
+      "gaming-citation-repair",
+      backend,
+      gamingCitationRepairPrompt,
+      repairAttachments,
+      sample,
+      runOpts,
+      gamingCitationRepairStructured,
+    );
+    gamingCitationRepairReceiptSha256 = sha256(
+      serializeCacheEntry(callReceipt(backend, gamingCitationRepairCall)),
+    );
+    const repairOutput = validateRetainedCall(
+      runOpts,
+      "gaming-citation-repair",
+      "parse",
+      backend,
+      gamingCitationRepairCall,
+      () =>
+        parseStructuredCitationRepair(
+          gamingCitationRepairCall!.response.text,
+          gamingCitationRepairStructured.schema,
+          "gaming-citation-repair",
+        ) as GamingCitationRepairOutput,
+    );
+    const applied = validateRetainedCall(
+      runOpts,
+      "gaming-citation-repair",
+      "validation",
+      backend,
+      gamingCitationRepairCall,
+      () => applyGamingCitationRepair(parsed, gamingInspection.failures, repairOutput, rubricAttachments),
+    );
+    parsed = applied.pass;
+    correctedGamingEvidence = applied.corrected;
+  }
   const citationFailures = rubricCitationFailures(
     strictRubric.raw,
     parsed,
@@ -878,11 +1157,12 @@ export async function runJudge(
       ...rubricAttachments,
     ];
     citationRepairCall = await call(
+      "dimension-citation-repair",
       backend,
       citationRepairPrompt,
       citationRepairAttachments,
       sample,
-      opts,
+      runOpts,
       citationRepairStructured,
     );
     // Retain the provider/cache reply before any parser or validator can
@@ -890,19 +1170,17 @@ export async function runJudge(
     // even when this Promise subsequently rejects on malformed output.
     citationRepairReceipt = callReceipt(backend, citationRepairCall);
     citationRepairReceiptSha256 = sha256(serializeCacheEntry(citationRepairReceipt));
-    opts.onCitationRepairReceipt?.(citationRepairReceipt);
-    if (!citationRepairCall.fromCache) {
-      record(
-        opts,
-        backend,
-        citationRepairCall.key,
-        citationRepairCall.response,
-        citationRepairReceipt,
-      );
-    }
-    const repairOutput = parseStructuredCitationRepair(
-      citationRepairCall.response.text,
-      citationRepairStructured.schema,
+    const repairOutput = validateRetainedCall(
+      runOpts,
+      "dimension-citation-repair",
+      "parse",
+      backend,
+      citationRepairCall,
+      () =>
+        parseStructuredCitationRepair(
+          citationRepairCall!.response.text,
+          citationRepairStructured.schema,
+        ) as CitationRepairOutput,
     );
     try {
       const applied = applyCitationRepair(
@@ -935,7 +1213,12 @@ export async function runJudge(
   };
   const { verdict, overall } = computeVerdict(dims);
 
-  const performedCalls = [blindCall, rubricCall, ...(citationRepairCall ? [citationRepairCall] : [])];
+  const performedCalls = [
+    blindCall,
+    rubricCall,
+    ...(gamingCitationRepairCall ? [gamingCitationRepairCall] : []),
+    ...(citationRepairCall ? [citationRepairCall] : []),
+  ];
   const fullyReplayed = performedCalls.every((item) => item.fromCache);
   const anyCached = performedCalls.some((item) => item.fromCache);
   // A full replay retains historical usage for evaluation reports. A mixed
@@ -963,6 +1246,8 @@ export async function runJudge(
     rubricSchemaFile,
     citationRepairPrompt,
     citationRepairSchemaFile,
+    gamingCitationRepairPrompt,
+    gamingCitationRepairSchemaFile,
   ].map((p) => ({
     path: p.split("/").slice(-2).join("/"),
     sha256: sha256(readFileSync(p, "utf8")),
@@ -1008,6 +1293,12 @@ export async function runJudge(
                 ...citationRepairCall.response.models,
               ]
             : []),
+          ...(gamingCitationRepairCall
+            ? [
+                gamingCitationRepairCall.response.model,
+                ...gamingCitationRepairCall.response.models,
+              ]
+            : []),
         ]),
       ].sort(),
       prompt_files: promptFiles,
@@ -1032,6 +1323,21 @@ export async function runJudge(
             abstained_dimensions: repairAbstentions,
           }
         : null,
+      gaming_citation_repair: gamingCitationRepairCall
+        ? {
+            source: gamingCitationRepairCall.fromCache ? "cache" : "live",
+            prompt_sha256: gamingCitationRepairCall.key.promptHash,
+            evidence_sha256: gamingCitationRepairCall.key.evidenceHash,
+            receipt_sha256: gamingCitationRepairReceiptSha256!,
+            rejected_evidence: gamingInspection.failures.map((failure) => failure.text),
+            corrected_evidence: correctedGamingEvidence,
+          }
+        : null,
+      call_receipts: retainedCalls.map(({ role, receipt, source }) => ({
+        role,
+        source,
+        receipt_sha256: sha256(serializeCacheEntry(receipt)),
+      })),
       pass_sources: {
         blind: blindCall.fromCache ? "cache" : "live",
         rubric: rubricCall.fromCache ? "cache" : "live",
@@ -1069,6 +1375,8 @@ export async function runJudge(
     tokens_out: tokensOut,
     cost_usd: cost,
     citation_repair: verdictFile.provenance.citation_repair,
+    gaming_citation_repair: verdictFile.provenance.gaming_citation_repair,
+    call_receipts: verdictFile.provenance.call_receipts,
     replay: anyCached,
   };
   if (opts.eventsPath) appendEvent(opts.eventsPath, event);
@@ -1079,6 +1387,9 @@ export async function runJudge(
       blind: blind.text,
       rubric: rubric.text,
       ...(citationRepairCall ? { citation_repair: citationRepairCall.response.text } : {}),
+      ...(gamingCitationRepairCall
+        ? { gaming_citation_repair: gamingCitationRepairCall.response.text }
+        : {}),
     },
     ...(citationRepairReceipt ? { citationRepairReceipt } : {}),
     event,

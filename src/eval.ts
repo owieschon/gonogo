@@ -6,7 +6,7 @@
  * the log. That indirection is deliberate — the log is the substrate, and a
  * reporting path that bypassed it would be a second source of truth.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DIMENSIONS } from "./types.ts";
 import type { Dimension } from "./types.ts";
@@ -17,8 +17,10 @@ import { readEvents, isJudgeEvent } from "./events.ts";
 import type { JudgeEvent } from "./events.ts";
 import { listFixtures, materialize, type Fixture } from "./fixtures.ts";
 import { GONOGO_VERSION } from "./version.ts";
-import { serializeCacheEntry } from "./replay.ts";
 import type { CacheEntry } from "./replay.ts";
+import { fileCallEvidenceSink } from "./call-receipts.ts";
+import type { CallEvidenceSink, CallFailureReceipt } from "./call-receipts.ts";
+import type { JudgeCallRole, JudgePassSource } from "./types.ts";
 
 export interface EvalOptions {
   fixturesDir: string;
@@ -33,6 +35,7 @@ export interface EvalOptions {
 }
 
 interface FailedRun {
+  runId: string;
   fixture: string;
   k: number;
   error: string;
@@ -42,29 +45,75 @@ function runIdFor(fixture: string, k: number, stamp: string): string {
   return `eval-${stamp}-${fixture}-k${k}`;
 }
 
-/**
- * Live eval without --record still retains a complete repair-call receipt.
- * Recorded and replayed sweeps already have the canonical global receipt.
- */
-export function evalCitationRepairReceiptSink(
-  options: Pick<EvalOptions, "eventsPath" | "record" | "replay">,
-  runId: string,
-): ((receipt: CacheEntry) => void) | undefined {
-  if (options.record || options.replay) return undefined;
-  return (receipt) => {
-    const evidenceDir = join(dirname(options.eventsPath), "runs", runId, "evidence");
-    mkdirSync(evidenceDir, { recursive: true });
-    writeFileSync(
-      join(evidenceDir, "citation-repair-receipt.json"),
-      serializeCacheEntry(receipt),
-    );
+export interface EvalCallReceipt {
+  runId: string;
+  role: JudgeCallRole;
+  source: JudgePassSource;
+  receipt: CacheEntry;
+}
+
+export interface EvalCostAccounting {
+  retainedFailedCost: number;
+  retainedFailedKnownAmounts: number;
+  retainedSweepCost: number;
+  retainedSweepKnownAmounts: number;
+  unknownFailedProviderAmounts: number;
+  unknownProviderAmounts: number;
+}
+
+/** Provider-reported amounts only; null receipts and failed invocations stay explicitly unknown. */
+export function summarizeEvalCostAccounting(
+  receipts: EvalCallReceipt[],
+  failedRunIds: ReadonlySet<string>,
+  backendFailureCount: number,
+): EvalCostAccounting {
+  const live = receipts.filter((receipt) => receipt.source === "live");
+  const failed = live.filter((receipt) => failedRunIds.has(receipt.runId));
+  const known = (items: EvalCallReceipt[]): number =>
+    items.reduce((total, item) => total + (item.receipt.cost_usd ?? 0), 0);
+  return {
+    retainedFailedCost: known(failed),
+    retainedFailedKnownAmounts: failed.filter((receipt) => receipt.receipt.cost_usd !== null).length,
+    retainedSweepCost: known(live),
+    retainedSweepKnownAmounts: live.filter((receipt) => receipt.receipt.cost_usd !== null).length,
+    unknownFailedProviderAmounts:
+      failed.filter((receipt) => receipt.receipt.cost_usd === null).length + backendFailureCount,
+    unknownProviderAmounts:
+      live.filter((receipt) => receipt.receipt.cost_usd === null).length + backendFailureCount,
   };
 }
 
-async function oneRun(fx: Fixture, k: number, stamp: string, o: EvalOptions): Promise<void> {
+export function evalCallEvidenceSink(
+  options: Pick<EvalOptions, "eventsPath" | "record" | "replay">,
+  runId: string,
+  receipts: EvalCallReceipt[],
+  failures: CallFailureReceipt[],
+): CallEvidenceSink {
+  const fileSink =
+    options.record || options.replay
+      ? undefined
+      : fileCallEvidenceSink(join(dirname(options.eventsPath), "runs", runId, "evidence"));
+  return {
+    receipt(role, receipt, source) {
+      receipts.push({ runId, role, source, receipt });
+      fileSink?.receipt(role, receipt, source);
+    },
+    failure(failure) {
+      failures.push(failure);
+      fileSink?.failure(failure);
+    },
+  };
+}
+
+async function oneRun(
+  fx: Fixture,
+  k: number,
+  runId: string,
+  o: EvalOptions,
+  callEvidenceSink: CallEvidenceSink,
+): Promise<void> {
   const m = materialize(fx);
   try {
-    const runId = runIdFor(fx.name, k, stamp);
     const ev = collectEvidence({
       repo: m.repo,
       base: m.base,
@@ -80,7 +129,7 @@ async function oneRun(fx: Fixture, k: number, stamp: string, o: EvalOptions): Pr
       runId,
       kind: "fixture",
       fixtureId: fx.name,
-      onCitationRepairReceipt: evalCitationRepairReceiptSink(o, runId),
+      callEvidenceSink,
     });
   } finally {
     m.cleanup();
@@ -231,21 +280,24 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const failed: FailedRun[] = [];
+  const callReceipts: EvalCallReceipt[] = [];
+  const callFailures: CallFailureReceipt[] = [];
   const wanted = new Set<string>();
   const t0 = Date.now();
 
   for (const fx of fixtures) {
     for (let k = 1; k <= o.k; k++) {
       process.stderr.write(`  ${o.replay ? "replay" : "judge"} ${fx.name} run ${k}/${o.k}\n`);
+      const runId = runIdFor(fx.name, k, stamp);
       // One unrecoverable run must not cost the other seventeen. Record it and
       // keep going; it is reported below and fails the command at the end.
       try {
-        await oneRun(fx, k, stamp, o);
-        wanted.add(runIdFor(fx.name, k, stamp));
+        await oneRun(fx, k, runId, o, evalCallEvidenceSink(o, runId, callReceipts, callFailures));
+        wanted.add(runId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stderr.write(`    run failed: ${msg.split("\n")[0]}\n`);
-        failed.push({ fixture: fx.name, k, error: msg });
+        failed.push({ runId, fixture: fx.name, k, error: msg });
       }
     }
   }
@@ -432,20 +484,59 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
   }
 
   const costs = runs.map((r) => r.cost_usd).filter((c): c is number => typeof c === "number");
-  const totalCost = costs.reduce((a, b) => a + b, 0);
+  const completedCost = costs.reduce((a, b) => a + b, 0);
+  const completedCostUnknown = runs.some((run) => run.cost_usd === null);
+  const failedRunIds = new Set(failed.map((failure) => failure.runId));
+  const costAccounting = summarizeEvalCostAccounting(
+    callReceipts,
+    failedRunIds,
+    callFailures.filter((failure) => failure.stage === "backend").length,
+  );
   const judgeMs = runs.reduce((a, r) => a + r.latency_ms, 0);
   const tokensIn = runs.reduce((a, r) => a + (r.tokens_in ?? 0), 0);
   lines.push("");
   lines.push(
-    `${runs.length} runs (${fixtures.length} fixtures × k=${o.k})` +
+    `${fixtures.length * o.k} scheduled runs (${fixtures.length * o.k * 2} baseline calls) · ` +
+      `${callReceipts.length + callFailures.filter((failure) => failure.stage === "backend").length} calls observed · ` +
+      `${runs.length} completed verdict events · ${failed.length} failed runs` +
       `${o.replay ? " — REPLAY MODE, no judge was invoked" : ""}`,
   );
   lines.push(
     `wall time ${(wallMs / 1000).toFixed(1)}s · judge time ${(judgeMs / 1000).toFixed(1)}s · ` +
       `${(tokensIn / 1000).toFixed(0)}k prompt tokens · ` +
-      `cost ${o.replay ? "$0.0000 (replayed)" : "$" + totalCost.toFixed(4)}` +
-      (o.replay ? ` (recorded runs cost $${totalCost.toFixed(4)})` : ""),
+      `completed-event cost ${
+        o.replay
+          ? "$0.0000 (replayed)"
+          : costs.length === 0 && completedCostUnknown
+            ? "unknown"
+            : `$${completedCost.toFixed(4)}${completedCostUnknown ? " (known minimum)" : ""}`
+      }` +
+      (o.replay
+        ? ` (recorded runs cost ${
+            costs.length === 0 && completedCostUnknown
+              ? "unknown"
+              : `$${completedCost.toFixed(4)}${completedCostUnknown ? " known minimum" : ""}`
+          })`
+        : ""),
   );
+  if (!o.replay) {
+    const amount = (cost: number, known: number, unknown: number): string =>
+      known === 0 && unknown > 0
+        ? "unknown"
+        : `$${cost.toFixed(4)}${unknown > 0 ? " (known minimum)" : ""}`;
+    lines.push(
+      `retained failed-call cost ${amount(
+        costAccounting.retainedFailedCost,
+        costAccounting.retainedFailedKnownAmounts,
+        costAccounting.unknownFailedProviderAmounts,
+      )} · retained sweep cost ${amount(
+        costAccounting.retainedSweepCost,
+        costAccounting.retainedSweepKnownAmounts,
+        costAccounting.unknownProviderAmounts,
+      )} · ` +
+        `unknown provider amounts ${costAccounting.unknownProviderAmounts}`,
+    );
+  }
   void retries;
 
   const dimensionAccuracy: Record<string, number> = {};

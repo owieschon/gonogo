@@ -1,0 +1,29 @@
+{
+  "$defs": {
+    "repair": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "original_index": { "type": "integer", "minimum": 0 },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?=.*\\S)[^\\r\\n]+$"
+          }
+        }
+      },
+      "required": ["original_index", "citations"]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repairs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/repair" }
+    }
+  },
+  "required": ["repairs"]
+}
