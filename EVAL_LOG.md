@@ -597,3 +597,4 @@ path-based transcript branch, while the adapter adds a mutually exclusive text
 branch. It does, however, fail the published zero-hard-failure gate and is
 therefore recorded as a blocker rather than averaged away or superseded by the
 earlier passing replay receipt.
+2026-09-01 · judge-receipts-gaming-citations · pinned checked-in replay before: 21/21 verdicts, 20/21 goal alignment, 12/12 core, 12/12 drift, zero hard failures, PASS; after adding every-call receipts and frozen-decision gaming-citation correction: 21/21 verdicts, 20/21 goal alignment, 12/12 core, 12/12 drift, zero hard failures, PASS; kept; no paid/live eval was run, the adapter branch's failed 2/21 gate remains immutable, and the next live gate belongs only after review and integration as a new instrument version.

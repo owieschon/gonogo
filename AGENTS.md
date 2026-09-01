@@ -84,7 +84,7 @@ which comes before the code.
 
 `events.jsonl` at the repo root is append-only and is the substrate `eval` and
 `calibrate` read. One event per judge invocation, per rater, per recorded
-outcome. `schema_version` is 4; `src/events.ts` migrates v1-v3 on read.
+outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
   `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,

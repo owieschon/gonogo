@@ -4,9 +4,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   evaluateEvalQualityGate,
-  evalCitationRepairReceiptSink,
+  evalCallEvidenceSink,
   loadEvalQualityFloors,
   parseEvalQualityFloors,
+  summarizeEvalCostAccounting,
   type EvalQualityFloors,
   type EvalQualityGateInput,
 } from "./eval.ts";
@@ -138,7 +139,7 @@ test("threshold policy parsing fails closed on version, shape, and range errors"
   );
 });
 
-test("live eval without --record retains a run-local citation-repair receipt", () => {
+test("live eval without --record retains deterministic run-local call receipts", () => {
   const dir = mkdtempSync(join(tmpdir(), "gonogo-eval-receipt-"));
   try {
     const receipt = buildCacheEntry(
@@ -162,18 +163,58 @@ test("live eval without --record retains a run-local citation-repair receipt", (
       },
     );
     const options = { eventsPath: join(dir, "events.jsonl"), record: false, replay: false };
-    const sink = evalCitationRepairReceiptSink(options, "eval-run");
-    expect(sink).toBeFunction();
-    sink!(receipt);
+    const sink = evalCallEvidenceSink(options, "eval-run", [], []);
+    sink.receipt("rubric", receipt, "live");
     expect(
       readFileSync(
-        join(dir, "runs", "eval-run", "evidence", "citation-repair-receipt.json"),
+        join(dir, "runs", "eval-run", "evidence", "calls", "rubric.receipt.json"),
         "utf8",
       ),
     ).toBe(serializeCacheEntry(receipt));
-    expect(evalCitationRepairReceiptSink({ ...options, record: true }, "recorded")).toBeUndefined();
-    expect(evalCitationRepairReceiptSink({ ...options, replay: true }, "replayed")).toBeUndefined();
+    expect(() => sink.receipt("rubric", receipt, "live")).toThrow("refusing to overwrite");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("cost accounting retains failed-run costs and discloses unknown provider amounts", () => {
+  const makeReceipt = (cost_usd: number | null) =>
+    buildCacheEntry(
+      {
+        promptHash: "a".repeat(64),
+        evidenceHash: "b".repeat(64),
+        sample: 1,
+        backend: "test",
+        instrumentVersion: GONOGO_VERSION,
+      },
+      {
+        recorded_at: "2026-09-01T00:00:00.000Z",
+        model_version: "test-model",
+        backend: "test",
+        latency_ms: 1,
+        cost_usd,
+        tokens_in: 1,
+        tokens_out: 1,
+        text: "response",
+      },
+    );
+  const accounting = summarizeEvalCostAccounting(
+    [
+      { runId: "completed", role: "rubric", source: "live", receipt: makeReceipt(1.25) },
+      { runId: "failed", role: "blind", source: "live", receipt: makeReceipt(0.5) },
+      { runId: "failed", role: "rubric", source: "live", receipt: makeReceipt(null) },
+      { runId: "failed", role: "gaming-citation-repair", source: "cache", receipt: makeReceipt(9) },
+    ],
+    new Set(["failed"]),
+    1,
+  );
+
+  expect(accounting).toEqual({
+    retainedFailedCost: 0.5,
+    retainedFailedKnownAmounts: 1,
+    retainedSweepCost: 1.75,
+    retainedSweepKnownAmounts: 2,
+    unknownFailedProviderAmounts: 2,
+    unknownProviderAmounts: 2,
+  });
 });

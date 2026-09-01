@@ -572,6 +572,8 @@ describe("event log", () => {
     expect(current.drift_type).toBe("other");
     expect(current.attempted_gaming).toBe(false);
     expect(current.citation_repair).toBeNull();
+    expect(current.gaming_citation_repair).toBeNull();
+    expect(current.call_receipts).toBeNull();
     expect(current.subject_hash).toBeNull();
     expect(current.scores.task_satisfaction).toBe(4);
     expect(current.scores.scope_discipline).toBe("abstain");
@@ -740,6 +742,54 @@ describe("event log", () => {
     expect(() =>
       migrateEvent({ ...valid, scores: { ...valid.scores, task_satisfaction: "abstain" } }),
     ).toThrow("repaired task_satisfaction but its final score is abstain");
+  });
+
+  test("v5 binds every completed call and gaming correction to immutable receipt hashes", () => {
+    const event = migrateEvent(judge) as any;
+    event.subject_hash = "a".repeat(64);
+    event.replay = true;
+    event.attempted_gaming = true;
+    event.prompt_hashes = {
+      ...event.prompt_hashes,
+      "prompts/gaming-citation-repair.md": "c".repeat(64),
+      "prompts/gaming-citation-repair.schema.json": "d".repeat(64),
+    };
+    event.gaming_citation_repair = {
+      source: "cache",
+      prompt_sha256: "e".repeat(64),
+      evidence_sha256: "f".repeat(64),
+      receipt_sha256: "1".repeat(64),
+      rejected_evidence: ["  invalid"],
+      corrected_evidence: ["invalid"],
+    };
+    event.call_receipts = [
+      { role: "blind", source: "cache", receipt_sha256: "2".repeat(64) },
+      { role: "rubric", source: "cache", receipt_sha256: "3".repeat(64) },
+      { role: "gaming-citation-repair", source: "cache", receipt_sha256: "1".repeat(64) },
+    ];
+
+    expect(migrateEvent(event)).toMatchObject({
+      gaming_citation_repair: {
+        rejected_evidence: ["  invalid"],
+        corrected_evidence: ["invalid"],
+      },
+      call_receipts: event.call_receipts,
+    });
+    expect(() =>
+      migrateEvent({
+        ...event,
+        call_receipts: [event.call_receipts[0], event.call_receipts[1], event.call_receipts[1]],
+      }),
+    ).toThrow("unique roles");
+    expect(() =>
+      migrateEvent({
+        ...event,
+        gaming_citation_repair: {
+          ...event.gaming_citation_repair,
+          corrected_evidence: [],
+        },
+      }),
+    ).toThrow("corrected_evidence must not be empty");
   });
 
   test("the verdict report distinguishes frozen citation repair from historical rerating", () => {

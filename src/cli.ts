@@ -10,7 +10,7 @@ import { runJudge } from "./rubric.ts";
 import { renderHtml } from "./report.ts";
 import { runEval } from "./eval.ts";
 import { runCalibrate } from "./calibrate.ts";
-import { serializeCacheEntry } from "./replay.ts";
+import { fileCallEvidenceSink } from "./call-receipts.ts";
 import { makeBackend } from "./judges/index.ts";
 import {
   EVENT_SCHEMA_VERSION,
@@ -243,11 +243,7 @@ async function cmdJudge(args: Args): Promise<number> {
     disclosure: disclosureOf(args),
     replayDir: args.replay === true ? DEFAULT_CACHE : undefined,
     recordDir: args.record === true ? DEFAULT_CACHE : undefined,
-    onCitationRepairReceipt: (receipt) =>
-      writeFileSync(
-        join(outDir, "evidence", "citation-repair-receipt.json"),
-        serializeCacheEntry(receipt),
-      ),
+    callEvidenceSink: fileCallEvidenceSink(join(outDir, "evidence")),
   });
 
   writeFileSync(join(outDir, "verdict.json"), JSON.stringify(verdictFile, null, 2) + "\n");
@@ -256,6 +252,12 @@ async function cmdJudge(args: Args): Promise<number> {
   writeFileSync(join(outDir, "evidence", "raw-rubric-pass.txt"), raw.rubric);
   if (raw.citation_repair !== undefined) {
     writeFileSync(join(outDir, "evidence", "raw-citation-repair.txt"), raw.citation_repair);
+  }
+  if (raw.gaming_citation_repair !== undefined) {
+    writeFileSync(
+      join(outDir, "evidence", "raw-gaming-citation-repair.txt"),
+      raw.gaming_citation_repair,
+    );
   }
 
   const d = verdictFile.dimensions;
