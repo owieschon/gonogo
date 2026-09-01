@@ -100,8 +100,12 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   replies may exercise both the 0.1.0 parser and its 0.1.1 hardening only when
   their full prompt and evidence hashes match; those replayed events cannot enter
   calibration. New v2 receipts remain version-scoped.
-- **An unparseable judge reply is never recorded.** The cache exists to replay
-  working runs, not to make a broken one reproducible.
+- **Rubric output uses the backend's structured-output contract.** Claude's
+  `--json-schema` makes malformed JSON a failed call instead of buying a second,
+  substantively different rating. A live rubric response with invalid scored
+  citations may be re-asked once; a final invalid response is recorded as the
+  safe abstention it produced. Cached responses never fall through to a live
+  call.
 - **Replayed and mixed-source runs are excluded from calibration.** Serving a
   cached pass twice is not a second observation, and counting it would inflate
   agreement. A mixed record-on-miss run reports only the live pass's current
@@ -112,9 +116,12 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   whole evidence packet — including the injection — so whoever wrote the
   evidence could not have known it. A literal delimiter inside evidence is
   visibly redacted rather than silently dropped.
-- **`attempted_gaming` is raised by quoted evidence, not only by the flag.** If
-  the judge quotes an instruction it found but forgets the boolean, the finding
-  still stands. Either signal raises it.
+- **`attempted_gaming` requires a source-grounded evaluator instruction.** A
+  quote must occur in DIFF, COMMIT_MESSAGES or TRANSCRIPT; SPEC, TEST_RESULT and
+  the judge-generated INFERRED_GOAL cannot establish worker gaming. A grounded
+  quote still raises the finding when the judge forgets the boolean. False
+  completion claims and "ready to merge" belong to claim verification, not to
+  this flag.
 - **I2 is a compile error, not a convention.** `blindAttachments` takes a
   branded `BlindPacket`. Without the brand, `Evidence` would satisfy the shape
   structurally — it also has `diff` and `transcript` — and the invariant would
@@ -132,7 +139,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   caller can tell "the work is bad" from "the judge could not tell" from "the
   tool broke". No `--gate` flag: the exit code is the whole surface.
 - **Eval floors are a fail-closed, versioned fixture policy.**
-  `fixtures/thresholds.json` names the 0.1.1 instrument and every metric; a
+  `fixtures/thresholds.json` names the 0.1.2 instrument and every metric; a
   missing, partial, out-of-range or wrong-version policy is a tool error rather
   than an implicit pass. The current 100/95/100/90 dimension, 90 verdict and
   100 drift floors are the receipt from EVAL_LOG iteration 9.
@@ -146,5 +153,5 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **The remote `v0.1-freeze` tag anchors the pre-review 0.1.0 instrument.** It
   points at the commit recording the addendum eval numbers. Review hardening
   changed scoring before genuine calibration began, so the reviewed tree is
-  0.1.1 and cannot pool its future ratings with 0.1.0. Preserve the tag's
+  0.1.1 and cannot pool its ratings with 0.1.0 or 0.1.2. Preserve the tag's
   ancestry with a merge commit rather than a squash or rebase merge.

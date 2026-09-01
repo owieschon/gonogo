@@ -33,9 +33,10 @@ split them on `claim_verification` and must not split them on
       transcript.txt   a fake session log, treated as opaque text
       labels.json      expected [min,max] per dimension, plus core_checks
 
-Recorded judge output lives in `replay/` at the repository root, keyed by prompt
-hash, evidence hash and sample index — not inside the fixture, because the same
-fixture produces different output under different prompts.
+Recorded judge output lives in `replay/` at the repository root, keyed by
+backend, instrument version, requested model, prompt contract hash, evidence
+hash and sample index — not inside the fixture, because the same fixture
+produces different output under different instruments.
 
 `labels.json` holds two different things and they are not interchangeable:
 
