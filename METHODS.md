@@ -53,9 +53,11 @@ Calibration analysis stratifies by gonogo version, judge backend and model, and
 marks the pre-review 0.1.0 instrument candidate. Citation and provenance
 hardening changed scoring before the first genuine paired datum, so that reviewed
 tree identified itself as 0.1.1. Source-grounded gaming evidence, structured
-rubric output and bounded citation retry now identify the tree as 0.1.2. Runs
-across versions are reported separately and never pooled silently into one
-agreement figure.
+rubric output and bounded citation retry identified the first release candidate
+as 0.1.2. Claude Code 2.1.238 rejected that schema's Draft 2020-12 meta-schema
+URI before inference, so the CLI-compatible schema identifies the tree as
+0.1.3. Runs across versions are reported separately and never pooled silently
+into one agreement figure.
 
 ### Known limits
 

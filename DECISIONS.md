@@ -107,7 +107,9 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   substantively different rating. A live rubric response with invalid scored
   citations may be re-asked once; a final invalid response is recorded as the
   safe abstention it produced. Cached responses never fall through to a live
-  call.
+  call. The schema omits `$schema`: Claude Code 2.1.238 rejects the Draft
+  2020-12 meta-schema URI before inference even though it accepts the same
+  object schema without that annotation.
 - **Replayed and mixed-source runs are excluded from calibration.** Serving a
   cached pass twice is not a second observation, and counting it would inflate
   agreement. A mixed record-on-miss run reports only the live pass's current
@@ -141,7 +143,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   caller can tell "the work is bad" from "the judge could not tell" from "the
   tool broke". No `--gate` flag: the exit code is the whole surface.
 - **Eval floors are a fail-closed, versioned fixture policy.**
-  `fixtures/thresholds.json` names the 0.1.2 instrument and every metric; a
+  `fixtures/thresholds.json` names the 0.1.3 instrument and every metric; a
   missing, partial, out-of-range or wrong-version policy is a tool error rather
   than an implicit pass. The current 100/95/100/90 dimension, 90 verdict and
   100 drift floors are the receipt from EVAL_LOG iteration 9.
@@ -155,5 +157,5 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **The remote `v0.1-freeze` tag anchors the pre-review 0.1.0 instrument.** It
   points at the commit recording the addendum eval numbers. Review hardening
   changed scoring before genuine calibration began, so the reviewed tree is
-  0.1.1 and cannot pool its ratings with 0.1.0 or 0.1.2. Preserve the tag's
-  ancestry with a merge commit rather than a squash or rebase merge.
+  0.1.1 and cannot pool its ratings with 0.1.0 or later instruments. Preserve
+  the tag's ancestry with a merge commit rather than a squash or rebase merge.
