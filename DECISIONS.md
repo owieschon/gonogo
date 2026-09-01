@@ -195,5 +195,34 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   `CURRENT` for equality, `STALE` for inequality and `UNVERIFIABLE` for legacy
   artifacts with no hash. This change bumps the event schema to v4 but leaves
   gonogo at 0.1.6 because prompts, scoring, rendered evidence and judge behavior
-  do not change. The future PR/workspace adapter will enforce this contract;
-  there is no standalone gating command without that consumer.
+  do not change. Input adapters always collect a fresh subject; a later consumer
+  that acts on a stored verdict must enforce this contract immediately before
+  acting. There is no standalone gating command without that consumer.
+
+## Addendum session — native input adapters
+
+- **Adapters resolve inputs; they do not add another judging path.** Both
+  `--workspace` and `--pr` end at `collectEvidence` and the existing two-pass
+  rubric. Explicit `--spec`, `--repo`, `--base`, `--transcript`, and `--task`
+  values win over discovered values. The adapters therefore change neither the
+  prompts nor the scoring instrument and keep the tool at 0.1.6.
+- **The Superset contract is its public CLI, tested against 1.25.1.** The
+  adapter reads `workspaces get`, a linked `tasks get`, and every terminal
+  returned by `terminals list`; it requests at most 5,000 lines of opaque
+  scrollback per terminal. The installed CLI does not expose a workspace's
+  creating prompt or base ref. An unlinked workspace therefore requires
+  `--spec`, and the base defaults to the merge-base with the repository's
+  remote default branch. `scripts/check-superset-workspace.ts` exercises these
+  surfaces live without making a paid judge call and is intentionally absent
+  from CI.
+- **GitHub PR mode judges an exact committed snapshot.** It uses the linked
+  closing issue title/body as the assigned spec, the PR body as worker
+  testimony, the PR base OID as the diff base, and rejects a dirty or different
+  checkout. A PR with no linked closing issue requires `--spec`; inventing a
+  task from the implementer's PR title would turn testimony into ground truth.
+  The contract is the authenticated `gh` CLI rather than a second API client.
+- **Stacked PRs fail closed at the first detected dependency.** If the PR base
+  is another PR head at the exact base OID, this adapter cannot prove from the
+  public GitHub/Superset surfaces that a current gonogo verdict exists for that
+  dependency. It stops and requires the dependency to be judged and landed, or
+  the child to be restacked, before judging the child.

@@ -16,6 +16,9 @@ tool, not its operator.
     bun install                       # once
     bunx tsc --noEmit                 # typecheck; must be clean before you push
     ./bin/gonogo judge --spec <f> --repo <p> --base <ref>
+    ./bin/gonogo judge --workspace <id> [--spec <f>]
+    ./bin/gonogo judge --pr <url> [--spec <f>]
+    bun run check:superset -- --spec <f>  # live resolution only; no judge call
     ./bin/gonogo eval --k 3           # live judge over all seven fixtures
     ./bin/gonogo eval --k 1 --only merged-but-wrong    # fast loop while iterating
     ./bin/gonogo eval --replay        # serve recorded judge output, no judge calls
@@ -32,6 +35,7 @@ neither, which is why CI uses it.
 
     bin/gonogo          bash launcher over src/cli.ts
     src/evidence.ts     git diff, changed files, commits, test run -> Evidence
+    src/adapters.ts     GitHub PR and Superset workspace -> existing judge inputs
     src/subject.ts      model-independent subject identity and applicability
     src/blind.ts        the branded BlindPacket that makes I2 a compile error
     src/events.ts       event schema, append, read, legacy -> current migration
