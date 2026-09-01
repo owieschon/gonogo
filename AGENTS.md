@@ -19,7 +19,7 @@ tool, not its operator.
     ./bin/gonogo eval --k 3           # live judge over all seven fixtures
     ./bin/gonogo eval --k 1 --only merged-but-wrong    # fast loop while iterating
     ./bin/gonogo eval --replay        # serve recorded judge output, no judge calls
-    ./bin/gonogo eval --k 3 --record  # live run, recording output for CI
+    GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --k 3 --record
     ./bin/gonogo outcome --task t1 --run <judge-run> --pr <url> --state merged
     bun test                          # invariant tests; must pass before you push
     ./bin/gonogo calibrate --repo <p> # judge-vs-human agreement for target repo
@@ -110,7 +110,8 @@ model: an edited prompt changes the key, so replay misses loudly rather than
 serving stale output — that is a prompt to re-record, not a verdict on the new
 prompt. If record-on-miss combines one cached pass with one live pass, the run is
 marked replayed and excluded from calibration; usage counts only the live work
-performed in that run.
+performed in that run. Recording and replay both pin `claude-sonnet-5`; an
+unpinned invocation is a different cache identity and must miss.
 
 ## Rules
 

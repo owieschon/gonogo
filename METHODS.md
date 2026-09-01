@@ -51,10 +51,11 @@ disagreeing with the judge.
 Calibration analysis stratifies by gonogo version, judge backend and model, and
 `prompt_hashes`, which every judge event carries. The git tag `v0.1-freeze`
 marks the pre-review 0.1.0 instrument candidate. Citation and provenance
-hardening changed scoring before the first genuine paired datum, so the reviewed
-tree identifies itself as 0.1.1. Later pipeline or prompt changes make another
-instrument version. Runs across versions are reported separately and never
-pooled silently into one agreement figure.
+hardening changed scoring before the first genuine paired datum, so that reviewed
+tree identified itself as 0.1.1. Source-grounded gaming evidence, structured
+rubric output and bounded citation retry now identify the tree as 0.1.2. Runs
+across versions are reported separately and never pooled silently into one
+agreement figure.
 
 ### Known limits
 
