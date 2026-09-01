@@ -117,6 +117,8 @@ export interface CollectOptions {
   base: string;
   spec: string;
   transcriptPath?: string;
+  /** Opaque transcript bytes supplied by an input adapter. */
+  transcriptText?: string;
   testCmd?: string;
   /** Raise for a large change; the judge sees eliding as a caveat on the verdict. */
   maxDiffChars?: number;
@@ -171,9 +173,15 @@ export function collectEvidence(opts: CollectOptions): Evidence {
 
   let transcriptRaw: string | null = null;
   let transcript: { text: string; truncated: boolean } | null = null;
+  if (opts.transcriptPath && opts.transcriptText !== undefined) {
+    throw new Error("transcriptPath and transcriptText are mutually exclusive");
+  }
   if (opts.transcriptPath) {
     // Opaque text on purpose: no format-specific parsing today.
     transcriptRaw = readFileSync(opts.transcriptPath, "utf8");
+    transcript = truncate(transcriptRaw, MAX_TRANSCRIPT_CHARS);
+  } else if (opts.transcriptText !== undefined) {
+    transcriptRaw = opts.transcriptText;
     transcript = truncate(transcriptRaw, MAX_TRANSCRIPT_CHARS);
   }
 
