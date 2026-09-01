@@ -30,10 +30,12 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   tokens per call (measured: $0.15 → $0.025 per call). Claude Code documents
   `--bare` as the reproducible scripting mode; `--tools ""` removes tools,
   whereas `--allowed-tools ""` merely approves none of the available tools.
-- **Malformed JSON from the judge is repaired, not rejected.** Judges quote diff
-  hunks into citation strings and sometimes leave the line breaks raw. Control
-  characters inside string literals are escaped and the parse retried; structure
-  is never rewritten. The prompt also asks for single-line citations.
+- **Legacy unstructured replies remain readable, but live rubric replies are
+  schema-constrained.** Pre-0.1.2 receipts may contain prose wrappers or raw
+  control characters inside citation strings, so the compatibility parser
+  extracts the object and escapes only those characters. New rubric and
+  citation-repair calls use Claude's structured-output contract; malformed or
+  schema-invalid output is a terminal tool error and never triggers a rerating.
 - **CI runs `gonogo eval --replay`, not a live judge.** A live run needs an
   authenticated `claude` CLI, which a public repo has no way to provide. The
   workflow comment says plainly what replay does and does not catch — notably
@@ -61,10 +63,11 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   judged half the record on any run without a transcript — which is every run
   driven by `scripts/self-judge.sh`. They go to the rubric pass only; the blind
   pass still sees the diff and the transcript and nothing else, as specified.
-- **An unparseable judge reply is re-asked once and counted, not swallowed.**
-  One malformed reply in eighteen killed a whole k=3 sweep during development.
-  The retry count is recorded in provenance as `rubric_parse_retries`, because
-  how often a judge emits garbage is a property worth knowing about the judge.
+- **Historical parse-retry provenance remains readable, but new runs do not
+  retry a rubric rating.** Pre-0.1.2 verdicts may carry
+  `rubric_parse_retries`; v0.1.2 and later write zero because structured-output
+  failure is terminal. Retaining the field explains old artifacts without
+  preserving the behavior that produced them.
 - **The repository started private and was made public during PR review.** The
   build session lacked `gh`; the maintainer review completed that release step
   before any merge.
@@ -104,12 +107,16 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   calibration. New v2 receipts remain version-scoped.
 - **Rubric output uses the backend's structured-output contract.** Claude's
   `--json-schema` makes malformed JSON a failed call instead of buying a second,
-  substantively different rating. A live rubric response with invalid scored
-  citations may be re-asked once; a final invalid response is recorded as the
-  safe abstention it produced. Cached responses never fall through to a live
-  call. The schema omits `$schema`: Claude Code 2.1.238 rejects the Draft
-  2020-12 meta-schema URI before inference even though it accepts the same
-  object schema without that annotation.
+  substantively different rating. The first schema-valid rubric response is
+  recorded and frozen. One separate structured call may repair only invalid
+  citation arrays or declare them unrepairable; its static prompt, schema and
+  response have their own immutable receipt. A failed repair becomes a safe
+  abstention without changing any score, reasoning or verdict metadata. Invalid
+  gaming evidence fails immediately because repairing it would change a
+  substantive finding. Cached responses never fall through to a live call. The
+  schemas omit `$schema`: Claude Code 2.1.238 rejects the Draft 2020-12
+  meta-schema URI before inference even though it accepts the same object
+  schemas without that annotation.
 - **Replayed and mixed-source runs are excluded from calibration.** Serving a
   cached pass twice is not a second observation, and counting it would inflate
   agreement. A mixed record-on-miss run reports only the live pass's current
@@ -135,15 +142,16 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   prompts", so an edited prompt silently served stale verdicts. The new key
   includes the prompt hash, so a prompt edit misses loudly.
 - **The log was born at schema v2.** Both addenda landed in one session, so no
-  v1 events were ever written. The v1 to v2 migration is implemented and covered
-  by tests rather than exercised by real data; that is the honest state of it.
+  v1 events were ever written. Schema v3 adds citation-repair provenance; v1
+  and v2 migrate with no repair. The migrations are covered by tests rather
+  than exercised by stored v1 data; that is the honest state of it.
 - **Exit codes map five verdicts onto four codes.** `go` and `go-with-notes`
   both exit 0 — a go with notes is still a go — and `hold` joins `no-go` at 1,
   because neither is a go. `inconclusive` is 2 and tool failure is 3, so a
   caller can tell "the work is bad" from "the judge could not tell" from "the
   tool broke". No `--gate` flag: the exit code is the whole surface.
 - **Eval floors are a fail-closed, versioned fixture policy.**
-  `fixtures/thresholds.json` names the 0.1.3 instrument and every metric; a
+  `fixtures/thresholds.json` names the 0.1.4 instrument and every metric; a
   missing, partial, out-of-range or wrong-version policy is a tool error rather
   than an implicit pass. The current 100/95/100/90 dimension, 90 verdict and
   100 drift floors are the receipt from EVAL_LOG iteration 9.

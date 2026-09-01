@@ -56,8 +56,11 @@ tree identified itself as 0.1.1. Source-grounded gaming evidence, structured
 rubric output and bounded citation retry identified the first release candidate
 as 0.1.2. Claude Code 2.1.238 rejected that schema's Draft 2020-12 meta-schema
 URI before inference, so the CLI-compatible schema identifies the tree as
-0.1.3. Runs across versions are reported separately and never pooled silently
-into one agreement figure.
+0.1.3. The first live 0.1.3 gate exposed that its citation retry resampled the
+whole rubric and did not retain the discarded receipt; citation-only repair
+with a frozen rubric response identifies the tree as 0.1.4. Runs across
+versions are reported separately and never pooled silently into one agreement
+figure.
 
 ### Known limits
 

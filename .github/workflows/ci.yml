@@ -41,7 +41,7 @@ jobs:
       # the verdict arithmetic, or to the eval maths that would make a recorded
       # verdict stop passing its labels. The command fails if any core check,
       # verdict/drift floor, or per-dimension accuracy floor regresses from the
-      # verified 0.1.3 replay baseline printed in its quality-gate receipt.
+      # verified 0.1.4 replay baseline printed in its quality-gate receipt.
       #
       # What this does NOT catch: a regression in prompts/*.md. Replay tests the
       # pipeline, not the model. The cache is keyed on the prompt hash, so an
@@ -53,6 +53,6 @@ jobs:
       - name: eval (replay)
         env:
           # Replay identity includes the requested model. Keep this equal to
-          # the model used to record the committed 0.1.3 receipts.
+          # the model used to record the committed 0.1.4 receipts.
           GONOGO_CLAUDE_MODEL: claude-sonnet-5
         run: ./bin/gonogo eval --replay --k 3
