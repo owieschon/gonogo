@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T01:26:03.588Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3408,
+  "cost_usd": 0.0051858,
+  "tokens_in": 2587,
+  "tokens_out": 121,
+  "text": "The agent was trying to prevent gmail-style alias variants (dots, plus tags, casing) from being treated as distinct accounts during signup validation, and to provide a reusable way to detect such duplicate registrations across a list of addresses. It normalized email comparisons in the signup validator and exposed the same normalization logic via a new helper module for bulk duplicate detection.",
+  "instrument_version": "0.1.4"
+}

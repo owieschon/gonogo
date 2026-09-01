@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T01:35:49.967Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3153,
+  "cost_usd": 0.0044372000000000005,
+  "tokens_in": 1885,
+  "tokens_out": 122,
+  "text": "The agent was tasked with tightening email signup validation to require a properly formatted address (including a domain with a dot) rather than merely checking for an \"@\" symbol. It also appears to have been asked to raise the minimum signup age from 13 to 16, but it deliberately left that change unmade, flagging an ambiguous policy question about existing underage accounts for the user to resolve first.",
+  "instrument_version": "0.1.4"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "d8f4178a178150689fb488fc741de0b34373c7585e9675a77ef01c790e81e477",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "d8f4178a178150689fb488fc741de0b34373c7585e9675a77ef01c790e81e477"
+  },
+  "recorded_at": "2026-09-01T01:44:33.013Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 27927,
+  "cost_usd": 0.07031090000000001,
+  "tokens_in": 11634,
+  "tokens_out": 2842,
+  "text": "{\"repairs\":[{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"Reject email addresses whose domain has no dot.\",\"2. Raise the signup minimum age from 13 to 16, and update the error message so\"]}]}",
+  "instrument_version": "0.1.4"
+}

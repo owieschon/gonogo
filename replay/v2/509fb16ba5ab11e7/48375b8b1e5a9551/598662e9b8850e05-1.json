@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T01:24:54.811Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5067,
+  "cost_usd": 0.013953750000000001,
+  "tokens_in": 2562,
+  "tokens_out": 117,
+  "text": "The agent was trying to prevent users from creating duplicate accounts by exploiting Gmail's dot- and plus-address aliasing, by normalizing emails during signup validation and adding a utility to detect such duplicates across an existing list of addresses. It also flagged that its normalization logic did not fully satisfy the test suite, leaving one case unresolved.",
+  "instrument_version": "0.1.4"
+}
