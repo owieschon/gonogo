@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { blindAttachments, blindPacket } from "./blind.ts";
 import { renderPrompt } from "./judges/index.ts";
+import { renderHtml } from "./report.ts";
 import {
   computeVerdict,
   extractJson,
@@ -295,24 +296,25 @@ describe("event log", () => {
     replay: false,
   };
 
-  test("a v1 judge event migrates to v2 with documented defaults", () => {
-    const v2 = migrateEvent(judge) as any;
-    expect(v2.schema_version).toBe(EVENT_SCHEMA_VERSION);
-    expect(v2.task_id).toBeNull();
-    expect(v2.workspace_id).toBeNull();
-    expect(v2.disclosure).toBe("none");
+  test("a v1 judge event migrates to v3 with documented defaults", () => {
+    const v3 = migrateEvent(judge) as any;
+    expect(v3.schema_version).toBe(EVENT_SCHEMA_VERSION);
+    expect(v3.task_id).toBeNull();
+    expect(v3.workspace_id).toBeNull();
+    expect(v3.disclosure).toBe("none");
     // An unclassified older event must not be read as "no drift observed".
-    expect(v2.drift_type).toBe("other");
-    expect(v2.attempted_gaming).toBe(false);
-    expect(v2.scores.task_satisfaction).toBe(4);
-    expect(v2.scores.scope_discipline).toBe("abstain");
-    expect(v2.scores.claim_verification).toBe("abstain");
-    expect(v2.scores.goal_alignment).toBe("abstain");
-    expect(v2.abstained).toBe(true);
-    expect(v2.verdict).toBe("inconclusive");
+    expect(v3.drift_type).toBe("other");
+    expect(v3.attempted_gaming).toBe(false);
+    expect(v3.citation_repair).toBeNull();
+    expect(v3.scores.task_satisfaction).toBe(4);
+    expect(v3.scores.scope_discipline).toBe("abstain");
+    expect(v3.scores.claim_verification).toBe("abstain");
+    expect(v3.scores.goal_alignment).toBe("abstain");
+    expect(v3.abstained).toBe(true);
+    expect(v3.verdict).toBe("inconclusive");
   });
 
-  test("a complete v2 outcome is accepted", () => {
+  test("a complete v2 outcome migrates to v3", () => {
     const v2 = {
       schema_version: 2,
       ts: "2026-08-31T00:00:00Z",
@@ -324,7 +326,13 @@ describe("event log", () => {
       state: "merged",
       merged_at: "2026-08-31T00:00:00Z",
     };
-    expect(migrateEvent(v2)).toEqual(v2 as any);
+    expect(migrateEvent(v2)).toEqual({ ...v2, schema_version: EVENT_SCHEMA_VERSION } as any);
+  });
+
+  test("v2 judge events migrate with citation repair explicitly absent", () => {
+    const v2 = { ...(migrateEvent(judge) as any), schema_version: 2 };
+    delete v2.citation_repair;
+    expect((migrateEvent(v2) as JudgeEvent).citation_repair).toBeNull();
   });
 
   test("a v1 rater event gains the optional fields", () => {
@@ -347,14 +355,14 @@ describe("event log", () => {
     });
   });
 
-  test("v2 scores have exactly the four rubric dimensions", () => {
-    const v2 = migrateEvent(judge) as any;
-    expect(() => migrateEvent({ ...v2, scores: { ...v2.scores, goal_alignment: undefined } })).toThrow(
+  test("v3 scores have exactly the four rubric dimensions", () => {
+    const v3 = migrateEvent(judge) as any;
+    expect(() => migrateEvent({ ...v3, scores: { ...v3.scores, goal_alignment: undefined } })).toThrow(
       "goal_alignment",
     );
-    const { goal_alignment: _removed, ...missing } = v2.scores;
-    expect(() => migrateEvent({ ...v2, scores: missing })).toThrow("missing goal_alignment");
-    expect(() => migrateEvent({ ...v2, scores: { ...v2.scores, charisma: 4 } })).toThrow(
+    const { goal_alignment: _removed, ...missing } = v3.scores;
+    expect(() => migrateEvent({ ...v3, scores: missing })).toThrow("missing goal_alignment");
+    expect(() => migrateEvent({ ...v3, scores: { ...v3.scores, charisma: 4 } })).toThrow(
       "unknown charisma",
     );
     expect(() => migrateEvent({ ...judge, scores: { ...judge.scores, charisma: 4 } })).toThrow(
@@ -362,14 +370,152 @@ describe("event log", () => {
     );
   });
 
-  test("v2 judge verdict fields must agree with the dimension scores", () => {
-    const v2 = migrateEvent(judge) as any;
-    expect(() => migrateEvent({ ...v2, abstained: false })).toThrow(
+  test("v3 judge verdict fields must agree with the dimension scores", () => {
+    const v3 = migrateEvent(judge) as any;
+    expect(() => migrateEvent({ ...v3, abstained: false })).toThrow(
       "abstained is inconsistent",
     );
-    expect(() => migrateEvent({ ...v2, verdict: "go" })).toThrow(
+    expect(() => migrateEvent({ ...v3, verdict: "go" })).toThrow(
       "verdict is inconsistent",
     );
+  });
+
+  const repairEvent = () => {
+    const event = migrateEvent(judge) as any;
+    event.prompt_hashes = {
+      ...event.prompt_hashes,
+      "prompts/citation-repair.md": "c".repeat(64),
+      "prompts/citation-repair.schema.json": "d".repeat(64),
+    };
+    event.citation_repair = {
+      source: "live",
+      prompt_sha256: "e".repeat(64),
+      evidence_sha256: "f".repeat(64),
+      requested_dimensions: ["task_satisfaction", "scope_discipline"],
+      repaired_dimensions: ["task_satisfaction"],
+      abstained_dimensions: ["scope_discipline"],
+    };
+    return event;
+  };
+
+  test("v3 records a frozen-score citation repair with an exact partition", () => {
+    const event = repairEvent();
+    expect(migrateEvent(event)).toMatchObject({
+      citation_repair: {
+        source: "live",
+        requested_dimensions: ["task_satisfaction", "scope_discipline"],
+        repaired_dimensions: ["task_satisfaction"],
+        abstained_dimensions: ["scope_discipline"],
+      },
+    });
+  });
+
+  test("v3 citation-repair provenance fails closed on malformed or inconsistent data", () => {
+    const valid = repairEvent();
+    const mutate = (changes: Record<string, unknown>) => ({
+      ...valid,
+      citation_repair: { ...valid.citation_repair, ...changes },
+    });
+    const missingRepair = { ...valid };
+    delete missingRepair.citation_repair;
+    expect(() => migrateEvent(missingRepair)).toThrow(
+      "citation_repair must be an object or null",
+    );
+    expect(() => migrateEvent(mutate({ source: "remote" }))).toThrow("source must be live or cache");
+    expect(() => migrateEvent(mutate({ prompt_sha256: "not-a-hash" }))).toThrow(
+      "64-character SHA-256",
+    );
+    expect(() => migrateEvent(mutate({ requested_dimensions: [] }))).toThrow("must not be empty");
+    expect(() => migrateEvent(mutate({ requested_dimensions: ["charisma"] }))).toThrow(
+      "unknown dimension",
+    );
+    expect(() =>
+      migrateEvent(mutate({
+        requested_dimensions: ["scope_discipline", "task_satisfaction"],
+      })),
+    ).toThrow("canonical order");
+    expect(() =>
+      migrateEvent(mutate({
+        repaired_dimensions: ["task_satisfaction", "task_satisfaction"],
+      })),
+    ).toThrow("unique dimensions");
+    expect(() => migrateEvent(mutate({ repaired_dimensions: [] }))).toThrow("must partition");
+    expect(() =>
+      migrateEvent(mutate({ abstained_dimensions: ["task_satisfaction", "scope_discipline"] })),
+    ).toThrow("both repaired and abstained");
+    expect(() =>
+      migrateEvent(mutate({ repaired_dimensions: ["claim_verification"] })),
+    ).toThrow("must be requested");
+    expect(() =>
+      migrateEvent({
+        ...valid,
+        prompt_hashes: { "prompts/citation-repair.md": "c".repeat(64) },
+      }),
+    ).toThrow("requires prompts/citation-repair.schema.json");
+    expect(() => migrateEvent(mutate({ source: "cache" }))).toThrow("requires replay=true");
+    expect(() =>
+      migrateEvent({ ...valid, scores: { ...valid.scores, task_satisfaction: "abstain" } }),
+    ).toThrow("repaired task_satisfaction but its final score is abstain");
+  });
+
+  test("the verdict report distinguishes frozen citation repair from historical rerating", () => {
+    const repair = repairEvent().citation_repair;
+    const artifact = {
+      schema: "gonogo/verdict@1",
+      verdict: "inconclusive",
+      overall_score: null,
+      dimensions: {
+        task_satisfaction: { score: 4, citations: ["c"], reasoning: "r" },
+        scope_discipline: { score: "abstain", reason: "citation could not be repaired" },
+        claim_verification: { score: 4, citations: ["c"], reasoning: "r" },
+        goal_alignment: { score: 4, citations: ["c"], reasoning: "r" },
+      },
+      spec_clarity: { score: 4, citations: ["c"], reasoning: "r" },
+      judge_confidence: 0.8,
+      summary: "s",
+      inferred_goal: "g",
+      drift_type: "none",
+      attempted_gaming: false,
+      gaming_evidence: [],
+      evidence_summary: {
+        changed_files: [],
+        diff_stat: "",
+        test: null,
+        transcript_present: false,
+        commits: 0,
+        truncated: { diff: false, transcript: false },
+      },
+      provenance: {
+        gonogo_version: "0.1.4",
+        judge_backend: "claude-cli",
+        model_version: "claude-sonnet-5",
+        models_reported: ["claude-sonnet-5"],
+        prompt_files: [],
+        started_at: "2026-08-31T00:00:00Z",
+        finished_at: "2026-08-31T00:00:01Z",
+        duration_ms: 1000,
+        cost_usd: null,
+        repo: "/tmp/example",
+        base: "a".repeat(40),
+        head: "b".repeat(40),
+        spec_sha256: "a".repeat(64),
+        diff_sha256: "b".repeat(64),
+        rubric_citation_retries: 1,
+        citation_repair: repair,
+        pass_sources: { blind: "cache", rubric: "cache" },
+        replayed: true,
+      },
+    } as any;
+    const repairedHtml = renderHtml(artifact);
+    expect(repairedHtml).toContain("the original scores were frozen");
+    expect(repairedHtml).toContain("safe abstentions");
+    expect(repairedHtml).toContain("citation repair: live judge");
+    expect(repairedHtml).toContain("partial cache");
+    expect(repairedHtml).not.toContain("no judge was invoked");
+    expect(repairedHtml).not.toContain("historical citation rerates");
+    artifact.provenance.citation_repair = undefined;
+    expect(renderHtml(artifact)).toContain("historical citation rerates");
+    expect(renderHtml(artifact)).toContain("scores were not frozen");
   });
 
   test("optional spec_clarity is validated when present", () => {
@@ -390,7 +536,7 @@ describe("event log", () => {
 
   test("outcome state and merged_at must agree", () => {
     const outcome = {
-      schema_version: 2,
+      schema_version: EVENT_SCHEMA_VERSION,
       ts: "2026-08-31T00:00:00Z",
       kind: "outcome",
       gonogo_version: "0.1.0",
@@ -410,10 +556,10 @@ describe("event log", () => {
 
   test("future, unknown and incomplete events are rejected", () => {
     expect(() => migrateEvent({ ...judge, schema_version: 999 })).toThrow("newer than supported");
-    expect(() => migrateEvent({ ...judge, schema_version: 2, kind: "future" })).toThrow(
+    expect(() => migrateEvent({ ...judge, schema_version: EVENT_SCHEMA_VERSION, kind: "future" })).toThrow(
       "unknown event kind",
     );
-    expect(() => migrateEvent({ schema_version: 2, kind: "real" })).toThrow("event.ts");
+    expect(() => migrateEvent({ schema_version: EVENT_SCHEMA_VERSION, kind: "real" })).toThrow("event.ts");
   });
 
   test("an outcome run must resolve to the same task", () => {

@@ -8,10 +8,10 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { DIMENSIONS } from "./types.ts";
-import type { Dimension } from "./types.ts";
+import { CITATION_REPAIR_DIMENSIONS, DIMENSIONS } from "./types.ts";
+import type { CitationRepair, CitationRepairDimension, Dimension } from "./types.ts";
 
-export const EVENT_SCHEMA_VERSION = 2;
+export const EVENT_SCHEMA_VERSION = 3;
 
 export type EventKind = "fixture" | "real" | "rater" | "outcome";
 
@@ -61,6 +61,8 @@ export interface JudgeEvent extends BaseEvent {
   tokens_in: number | null;
   tokens_out: number | null;
   cost_usd: number | null;
+  /** Citation-only repair provenance; null when the frozen rubric reply needed no repair. */
+  citation_repair: CitationRepair | null;
   /** True when either judge pass came from cache rather than a live call. */
   replay: boolean;
 }
@@ -135,6 +137,118 @@ function scoresField(value: unknown, label: string): void {
     throw new Error(`${label} must contain exactly ${DIMENSIONS.join(", ")} (${details})`);
   }
   for (const dimension of DIMENSIONS) scoreField(scores[dimension], `${label}.${dimension}`);
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+function sha256Field(value: unknown, label: string): string {
+  if (typeof value !== "string" || !SHA256_HEX.test(value)) {
+    throw new Error(`${label} must be a lowercase 64-character SHA-256 hex digest`);
+  }
+  return value;
+}
+
+function citationRepairDimensions(value: unknown, label: string): CitationRepairDimension[] {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  const allowed = CITATION_REPAIR_DIMENSIONS as readonly string[];
+  let prior = -1;
+  for (const dimension of value) {
+    if (typeof dimension !== "string" || !allowed.includes(dimension)) {
+      throw new Error(`${label} contains unknown dimension ${JSON.stringify(dimension)}`);
+    }
+    const index = allowed.indexOf(dimension);
+    if (index <= prior) {
+      throw new Error(`${label} must contain unique dimensions in canonical order`);
+    }
+    prior = index;
+  }
+  return value as CitationRepairDimension[];
+}
+
+function validateCitationRepair(
+  value: unknown,
+  event: Record<string, unknown>,
+  kind: "fixture" | "real",
+): CitationRepair | null {
+  if (value === null) return null;
+  const repair = recordOf(value, `${kind}.citation_repair`);
+  const expectedKeys = [
+    "source",
+    "prompt_sha256",
+    "evidence_sha256",
+    "requested_dimensions",
+    "repaired_dimensions",
+    "abstained_dimensions",
+  ].sort();
+  const actualKeys = Object.keys(repair).sort();
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    throw new Error(`${kind}.citation_repair must contain exactly ${expectedKeys.join(", ")}`);
+  }
+  if (repair.source !== "live" && repair.source !== "cache") {
+    throw new Error(`${kind}.citation_repair.source must be live or cache`);
+  }
+  sha256Field(repair.prompt_sha256, `${kind}.citation_repair.prompt_sha256`);
+  sha256Field(repair.evidence_sha256, `${kind}.citation_repair.evidence_sha256`);
+  const requested = citationRepairDimensions(
+    repair.requested_dimensions,
+    `${kind}.citation_repair.requested_dimensions`,
+  );
+  const repaired = citationRepairDimensions(
+    repair.repaired_dimensions,
+    `${kind}.citation_repair.repaired_dimensions`,
+  );
+  const abstained = citationRepairDimensions(
+    repair.abstained_dimensions,
+    `${kind}.citation_repair.abstained_dimensions`,
+  );
+  if (requested.length === 0) {
+    throw new Error(`${kind}.citation_repair.requested_dimensions must not be empty`);
+  }
+  const requestedSet = new Set(requested);
+  const repairedSet = new Set(repaired);
+  const abstainedSet = new Set(abstained);
+  if (repaired.some((dimension) => !requestedSet.has(dimension))) {
+    throw new Error(`${kind}.citation_repair.repaired_dimensions must be requested`);
+  }
+  if (abstained.some((dimension) => !requestedSet.has(dimension))) {
+    throw new Error(`${kind}.citation_repair.abstained_dimensions must be requested`);
+  }
+  if (repaired.some((dimension) => abstainedSet.has(dimension))) {
+    throw new Error(`${kind}.citation_repair dimensions cannot be both repaired and abstained`);
+  }
+  if (
+    requested.some((dimension) => !repairedSet.has(dimension) && !abstainedSet.has(dimension))
+  ) {
+    throw new Error(
+      `${kind}.citation_repair repaired_dimensions and abstained_dimensions must partition requested_dimensions`,
+    );
+  }
+  const scores = event.scores as Record<string, unknown>;
+  for (const dimension of repaired) {
+    const finalScore = dimension === "spec_clarity" ? event.spec_clarity : scores[dimension];
+    if (finalScore === undefined || finalScore === "abstain") {
+      throw new Error(`${kind}.citation_repair repaired ${dimension} but its final score is abstain`);
+    }
+  }
+  for (const dimension of abstained) {
+    const finalScore = dimension === "spec_clarity" ? event.spec_clarity : scores[dimension];
+    if (finalScore !== "abstain") {
+      throw new Error(`${kind}.citation_repair abstained ${dimension} but its final score is not abstain`);
+    }
+  }
+  if (repair.source === "cache" && event.replay !== true) {
+    throw new Error(`${kind}.citation_repair from cache requires replay=true`);
+  }
+  const hashes = event.prompt_hashes as Record<string, unknown>;
+  for (const path of ["prompts/citation-repair.md", "prompts/citation-repair.schema.json"]) {
+    if (!Object.hasOwn(hashes, path)) {
+      throw new Error(`${kind}.citation_repair requires ${path} in ${kind}.prompt_hashes`);
+    }
+  }
+  return repair as unknown as CitationRepair;
 }
 
 function outcomeForScores(scores: Record<string, unknown>): {
@@ -254,6 +368,10 @@ function validateCurrentEvent(value: unknown): GonogoEvent {
   nullableNumber(event.tokens_out, `${kind}.tokens_out`);
   nullableNumber(event.cost_usd, `${kind}.cost_usd`);
   if (typeof event.replay !== "boolean") throw new Error(`${kind}.replay must be a boolean`);
+  if (!Object.hasOwn(event, "citation_repair")) {
+    throw new Error(`${kind}.citation_repair must be an object or null`);
+  }
+  validateCitationRepair(event.citation_repair, event, kind);
   return event as unknown as JudgeEvent;
 }
 
@@ -288,10 +406,10 @@ export function requireOutcomeRun(
 }
 
 /**
- * v1 → v2. v1 had no task_id, workspace_id, disclosure, drift_type or
- * attempted_gaming, and no "outcome" kind. Absent fields become their
- * documented defaults; an absent legacy score becomes an abstention, never an
- * invented numeric judgement.
+ * v1/v2 → v3. v1 had no task_id, workspace_id, disclosure, drift_type or
+ * attempted_gaming, and no "outcome" kind. v1 and v2 had no citation-repair
+ * provenance. Absent fields become their documented defaults; an absent legacy
+ * score becomes an abstention, never an invented numeric judgement.
  */
 export function migrateEvent(raw: any): GonogoEvent {
   const version = Number(raw?.schema_version ?? 1);
@@ -317,6 +435,7 @@ export function migrateEvent(raw: any): GonogoEvent {
     e.disclosure ??= "none";
     e.drift_type ??= "other";
     e.attempted_gaming ??= false;
+    if (version < 3) e.citation_repair = null;
   }
   if (e.kind === "rater") {
     e.review_minutes ??= null;

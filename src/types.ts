@@ -9,6 +9,10 @@ export const DIMENSIONS = [
 
 export type Dimension = (typeof DIMENSIONS)[number];
 
+export const CITATION_REPAIR_DIMENSIONS = [...DIMENSIONS, "spec_clarity"] as const;
+
+export type CitationRepairDimension = (typeof CITATION_REPAIR_DIMENSIONS)[number];
+
 /** A dimension is either scored 0-4 with citations, or abstained with a reason. */
 export type DimensionResult =
   | { score: number; citations: string[]; reasoning: string }
@@ -57,6 +61,16 @@ export interface TestResult {
 
 export type JudgePassSource = "live" | "cache";
 
+/** Provenance for a bounded pass that repairs citations without changing frozen scores. */
+export interface CitationRepair {
+  source: JudgePassSource;
+  prompt_sha256: string;
+  evidence_sha256: string;
+  requested_dimensions: CitationRepairDimension[];
+  repaired_dimensions: CitationRepairDimension[];
+  abstained_dimensions: CitationRepairDimension[];
+}
+
 export interface Provenance {
   gonogo_version: string;
   judge_backend: string;
@@ -74,8 +88,10 @@ export interface Provenance {
   diff_sha256: string;
   /** Rubric-pass replies discarded because they would not parse. Usually 0. */
   rubric_parse_retries?: number;
-  /** Live rubric replies discarded once because an evidence quote was invalid. */
+  /** @deprecated Historical whole-rubric rerates. New runs use citation_repair. */
   rubric_citation_retries?: number;
+  /** Null when every frozen rubric score already had valid citations. */
+  citation_repair: CitationRepair | null;
   /** Source of each pass. Optional only for verdicts written before this field existed. */
   pass_sources?: { blind: JudgePassSource; rubric: JudgePassSource };
   /** True when any pass came from cache, so this run is excluded from calibration. */

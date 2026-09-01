@@ -6,12 +6,21 @@ import { readCache, writeCache } from "./replay.ts";
 import type { CacheKey, CachePayload } from "./replay.ts";
 import { renderHtml } from "./report.ts";
 import { runJudge } from "./rubric.ts";
-import type { JudgeBackend, JudgeInvokeOptions, JudgeResponse } from "./judges/types.ts";
+import type {
+  Attachment,
+  JudgeBackend,
+  JudgeInvokeOptions,
+  JudgeResponse,
+} from "./judges/types.ts";
 import type { Evidence } from "./types.ts";
 
 const roots: string[] = [];
 const RUBRIC_SCHEMA_CONTENT = readFileSync(
   join(import.meta.dir, "..", "prompts", "rubric-pass.schema.json"),
+  "utf8",
+);
+const CITATION_REPAIR_SCHEMA_CONTENT = readFileSync(
+  join(import.meta.dir, "..", "prompts", "citation-repair.schema.json"),
   "utf8",
 );
 
@@ -187,6 +196,11 @@ describe("record-on-miss", () => {
     writeFileSync(join(prompts, "blind-pass.md"), "Infer the goal.");
     writeFileSync(join(prompts, "rubric-pass.md"), "Score the work.");
     writeFileSync(join(prompts, "rubric-pass.schema.json"), RUBRIC_SCHEMA_CONTENT);
+    writeFileSync(join(prompts, "citation-repair.md"), "Repair citations only.");
+    writeFileSync(
+      join(prompts, "citation-repair.schema.json"),
+      CITATION_REPAIR_SCHEMA_CONTENT,
+    );
 
     const first = new CountingBackend();
     const live = await runJudge(evidence(), first, prompts, { recordDir: cache });
@@ -204,7 +218,16 @@ describe("record-on-miss", () => {
     expect(live.verdictFile.provenance.prompt_files.map((file) => file.path)).toContain(
       "prompts/rubric-pass.schema.json",
     );
+    expect(live.verdictFile.provenance.prompt_files.map((file) => file.path)).toContain(
+      "prompts/citation-repair.md",
+    );
+    expect(live.verdictFile.provenance.prompt_files.map((file) => file.path)).toContain(
+      "prompts/citation-repair.schema.json",
+    );
     expect(live.event.prompt_hashes["prompts/rubric-pass.schema.json"]).toBeDefined();
+    expect(live.event.prompt_hashes["prompts/citation-repair.md"]).toBeDefined();
+    expect(live.event.prompt_hashes["prompts/citation-repair.schema.json"]).toBeDefined();
+    expect(live.verdictFile.provenance.citation_repair).toBeNull();
 
     const exactReplay = new CountingBackend();
     const fullCache = await runJudge(evidence(), exactReplay, prompts, { recordDir: cache });
@@ -324,6 +347,11 @@ describe("rubric response validation", () => {
     writeFileSync(join(prompts, "blind-pass.md"), "Infer the goal.");
     writeFileSync(join(prompts, "rubric-pass.md"), "Score the work.");
     writeFileSync(join(prompts, "rubric-pass.schema.json"), RUBRIC_SCHEMA_CONTENT);
+    writeFileSync(join(prompts, "citation-repair.md"), "Repair citations only.");
+    writeFileSync(
+      join(prompts, "citation-repair.schema.json"),
+      CITATION_REPAIR_SCHEMA_CONTENT,
+    );
     return prompts;
   }
 
@@ -335,16 +363,20 @@ describe("rubric response validation", () => {
   class QueueBackend implements JudgeBackend {
     readonly name = "queue-backend";
     readonly requestedModel = "queue-model";
-    calls: { promptFile: string; structured: boolean }[] = [];
+    calls: { promptFile: string; structured: boolean; attachments: Attachment[] }[] = [];
 
     constructor(private readonly replies: Reply[]) {}
 
     async invoke(
       promptFile: string,
-      _attachments: unknown[],
+      attachments: Attachment[],
       options?: JudgeInvokeOptions,
     ): Promise<JudgeResponse> {
-      this.calls.push({ promptFile, structured: options?.structuredSchema !== undefined });
+      this.calls.push({
+        promptFile,
+        structured: options?.structuredSchema !== undefined,
+        attachments,
+      });
       const reply = this.replies.shift();
       if (!reply) throw new Error("test backend ran out of replies");
       return {
@@ -364,67 +396,285 @@ describe("rubric response validation", () => {
     text: JSON.stringify(value),
     model,
   });
+  const repairReply = (repairs: Record<string, unknown>[], model = "repair-model"): Reply => ({
+    text: JSON.stringify({ repairs }),
+    model,
+  });
 
-  test("retries one live citation-invalid response and meters the discarded call", async () => {
+  test("repairs a joined hard-wrap citation without rerating frozen fields", async () => {
     const prompts = promptsAt(root());
-    const invalid = validRubric({
+    const ev = {
+      ...evidence(),
+      diff: "+implemented\n+first hard-wrapped line\n+second hard-wrapped line",
+    };
+    const frozen = validRubric({
+      scope_discipline: {
+        score: 2,
+        citations: ["+first hard-wrapped line +second hard-wrapped line"],
+        reasoning: "frozen scope reasoning",
+      },
+      judge_confidence: 0.42,
+      summary: "frozen summary",
+    });
+    const frozenText = JSON.stringify(frozen);
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(frozen, "rubric-model"),
+      repairReply([
+        {
+          dimension: "scope_discipline",
+          status: "repaired",
+          citations: ["+first hard-wrapped line"],
+        },
+      ]),
+    ]);
+
+    const result = await runJudge(ev, backend, prompts);
+    expect(backend.calls.map((call) => call.promptFile.split("/").at(-1))).toEqual([
+      "blind-pass.md",
+      "rubric-pass.md",
+      "citation-repair.md",
+    ]);
+    expect(backend.calls.map((call) => call.structured)).toEqual([false, true, true]);
+    expect(result.raw.rubric).toBe(frozenText);
+    const repairAttachments = backend.calls[2]!.attachments;
+    expect(repairAttachments.find((item) => item.name === "FROZEN_RUBRIC_JSON")?.content).toBe(
+      frozenText,
+    );
+    expect(
+      JSON.parse(repairAttachments.find((item) => item.name === "CITATION_FAILURES")!.content),
+    ).toEqual({ dimensions: ["scope_discipline"] });
+    expect(result.verdictFile.dimensions.scope_discipline).toEqual({
+      score: 2,
+      citations: ["+first hard-wrapped line"],
+      reasoning: "frozen scope reasoning",
+    });
+    expect(result.verdictFile.judge_confidence).toBe(0.42);
+    expect(result.verdictFile.summary).toBe("frozen summary");
+    expect(result.verdictFile.drift_type).toBe("none");
+    expect(result.verdictFile.provenance.rubric_citation_retries).toBeUndefined();
+    expect(result.verdictFile.provenance.citation_repair).toMatchObject({
+      source: "live",
+      requested_dimensions: ["scope_discipline"],
+      repaired_dimensions: ["scope_discipline"],
+      abstained_dimensions: [],
+    });
+  });
+
+  test("repairs multiple dimensions, records three receipts, and meters all passes", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
+    const frozen = validRubric({
       task_satisfaction: {
         score: 4,
         requirements_total: 1,
         requirements_met: 1,
-        citations: ["invented citation"],
-        reasoning: "met",
+        citations: ["invented task citation"],
+        reasoning: "task frozen",
+      },
+      goal_alignment: {
+        score: 3,
+        citations: ["invented goal citation"],
+        reasoning: "goal frozen",
       },
     });
     const backend = new QueueBackend([
       blindReply(),
-      rubricReply(invalid, "discarded-model"),
-      rubricReply(validRubric(), "accepted-model"),
+      rubricReply(frozen, "rubric-model"),
+      repairReply(
+        [
+          {
+            dimension: "task_satisfaction",
+            status: "repaired",
+            citations: ["+implemented"],
+          },
+          {
+            dimension: "goal_alignment",
+            status: "repaired",
+            citations: ["inferred goal"],
+          },
+        ],
+        "repair-model",
+      ),
     ]);
 
-    const result = await runJudge(evidence(), backend, prompts);
-    expect(backend.calls).toHaveLength(3);
-    expect(backend.calls.map((call) => call.structured)).toEqual([false, true, true]);
-    expect(result.verdictFile.dimensions.task_satisfaction.score).toBe(4);
-    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(1);
-    expect(result.verdictFile.provenance.rubric_parse_retries).toBe(0);
+    const result = await runJudge(evidence(), backend, prompts, { recordDir: cache });
+    expect(filesBelow(cache)).toHaveLength(3);
+    expect(result.verdictFile.dimensions.task_satisfaction).toEqual({
+      score: 4,
+      citations: ["+implemented"],
+      reasoning: "task frozen",
+    });
+    expect(result.verdictFile.dimensions.goal_alignment).toEqual({
+      score: 3,
+      citations: ["inferred goal"],
+      reasoning: "goal frozen",
+    });
+    expect(result.verdictFile.provenance.citation_repair).toMatchObject({
+      source: "live",
+      requested_dimensions: ["task_satisfaction", "goal_alignment"],
+      repaired_dimensions: ["task_satisfaction", "goal_alignment"],
+      abstained_dimensions: [],
+    });
     expect(result.verdictFile.provenance.cost_usd).toBeCloseTo(0.3);
     expect(result.event.tokens_in).toBe(30);
     expect(result.event.tokens_out).toBe(6);
+    expect(result.event.citation_repair).toEqual(result.verdictFile.provenance.citation_repair);
     expect(result.verdictFile.provenance.models_reported).toEqual([
-      "accepted-model",
       "blind-model",
-      "discarded-model",
+      "repair-model",
+      "rubric-model",
     ]);
-    expect(renderHtml(result.verdictFile)).toContain("citation retries");
+    expect(renderHtml(result.verdictFile)).toContain("citation-only pass");
   });
 
-  test("a second citation-invalid live response becomes a safe abstention", async () => {
+  test("unrepairable and still-invalid citations become safe abstentions", async () => {
     const prompts = promptsAt(root());
-    const invalid = (citation: string) =>
-      validRubric({
-        task_satisfaction: {
-          score: 4,
-          requirements_total: 1,
-          requirements_met: 1,
-          citations: [citation],
-          reasoning: "met",
-        },
-      });
+    const frozen = validRubric({
+      scope_discipline: {
+        score: 2,
+        citations: ["invented scope citation"],
+        reasoning: "scope frozen",
+      },
+      claim_verification: {
+        score: 3,
+        citations: ["invented claim citation"],
+        reasoning: "claim frozen",
+      },
+    });
     const backend = new QueueBackend([
       blindReply(),
-      rubricReply(invalid("invented one"), "rubric-1"),
-      rubricReply(invalid("invented two"), "rubric-2"),
+      rubricReply(frozen, "rubric-model"),
+      repairReply([
+        {
+          dimension: "scope_discipline",
+          status: "unrepairable",
+          reason: "no exact supporting line",
+        },
+        {
+          dimension: "claim_verification",
+          status: "repaired",
+          citations: ["still invented"],
+        },
+      ]),
     ]);
 
     const result = await runJudge(evidence(), backend, prompts);
-    expect(backend.calls).toHaveLength(3);
-    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(1);
-    expect(result.verdictFile.dimensions.task_satisfaction.score).toBe("abstain");
+    expect(result.verdictFile.dimensions.scope_discipline.score).toBe("abstain");
+    expect(result.verdictFile.dimensions.claim_verification.score).toBe("abstain");
     expect(result.verdictFile.verdict).toBe("inconclusive");
+    expect(result.verdictFile.provenance.citation_repair).toMatchObject({
+      requested_dimensions: ["scope_discipline", "claim_verification"],
+      repaired_dimensions: [],
+      abstained_dimensions: ["scope_discipline", "claim_verification"],
+    });
   });
 
-  test("an explicit abstention is accepted without a retry", async () => {
+  test("duplicate, extra, and missing repair dimensions fail closed to abstention", async () => {
+    const cases = [
+      {
+        repairs: [
+          { dimension: "scope_discipline", status: "unrepairable", reason: "none" },
+          { dimension: "scope_discipline", status: "unrepairable", reason: "none" },
+        ],
+      },
+      {
+        repairs: [
+          { dimension: "task_satisfaction", status: "unrepairable", reason: "none" },
+        ],
+      },
+      {
+        repairs: [
+          { dimension: "scope_discipline", status: "unrepairable", reason: "none" },
+        ],
+        twoFailures: true,
+      },
+    ];
+    for (const item of cases) {
+      const dir = root();
+      const prompts = promptsAt(dir);
+      const cache = join(dir, "cache");
+      const frozen = validRubric({
+        scope_discipline: {
+          score: 2,
+          citations: ["invented scope citation"],
+          reasoning: "scope frozen",
+        },
+        ...(item.twoFailures
+          ? {
+              claim_verification: {
+                score: 2,
+                citations: ["invented claim citation"],
+                reasoning: "claim frozen",
+              },
+            }
+          : {}),
+      });
+      const backend = new QueueBackend([
+        blindReply(),
+        rubricReply(frozen, "rubric-model"),
+        repairReply(item.repairs),
+      ]);
+      const result = await runJudge(evidence(), backend, prompts, { recordDir: cache });
+      expect(backend.calls).toHaveLength(3);
+      expect(filesBelow(cache)).toHaveLength(3);
+      expect(result.verdictFile.dimensions.scope_discipline.score).toBe("abstain");
+      if (item.twoFailures) {
+        expect(result.verdictFile.dimensions.claim_verification.score).toBe("abstain");
+      }
+      expect(result.verdictFile.provenance.citation_repair).toMatchObject({
+        requested_dimensions: item.twoFailures
+          ? ["scope_discipline", "claim_verification"]
+          : ["scope_discipline"],
+        repaired_dimensions: [],
+        abstained_dimensions: item.twoFailures
+          ? ["scope_discipline", "claim_verification"]
+          : ["scope_discipline"],
+      });
+    }
+  });
+
+  test("malformed or schema-invalid repair output is terminal", async () => {
+    const replies = [
+      { text: '{"repairs":', model: "repair-model" },
+      { text: JSON.stringify({ repairs: [] }), model: "repair-model" },
+    ];
+    for (const reply of replies) {
+      const dir = root();
+      const prompts = promptsAt(dir);
+      const cache = join(dir, "cache");
+      const frozen = validRubric({
+        scope_discipline: {
+          score: 2,
+          citations: ["invented scope citation"],
+          reasoning: "scope frozen",
+        },
+      });
+      const backend = new QueueBackend([
+        blindReply(),
+        rubricReply(frozen, "rubric-model"),
+        reply,
+        repairReply([
+          {
+            dimension: "scope_discipline",
+            status: "repaired",
+            citations: ["file | 1 +"],
+          },
+        ], "must-not-be-called"),
+      ]);
+
+      await expect(runJudge(evidence(), backend, prompts, { recordDir: cache })).rejects.toThrow(
+        /citation-repair/,
+      );
+      expect(backend.calls).toHaveLength(3);
+      // Blind and frozen rubric are recorded. The repair is not recorded until
+      // it satisfies its structured-output contract.
+      expect(filesBelow(cache)).toHaveLength(2);
+    }
+  });
+
+  test("an explicit abstention is accepted without citation repair", async () => {
     const prompts = promptsAt(root());
     const abstained = validRubric({
       claim_verification: { score: "abstain", reason: "no claims to verify" },
@@ -436,47 +686,100 @@ describe("rubric response validation", () => {
 
     const result = await runJudge(evidence(), backend, prompts);
     expect(backend.calls).toHaveLength(2);
-    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(0);
     expect(result.verdictFile.dimensions.claim_verification.score).toBe("abstain");
+    expect(result.verdictFile.provenance.citation_repair).toBeNull();
   });
 
-  test("a citation-invalid cached response abstains without falling through to live", async () => {
+  test("strict replay reads all three receipts and never falls through to live", async () => {
     const dir = root();
     const prompts = promptsAt(dir);
     const cache = join(dir, "cache");
+    const frozen = validRubric({
+      scope_discipline: {
+        score: 2,
+        citations: ["invented scope citation"],
+        reasoning: "scope frozen",
+      },
+    });
+    const repair = repairReply([
+      {
+        dimension: "scope_discipline",
+        status: "repaired",
+        citations: ["file | 1 +"],
+      },
+    ]);
     const recorder = new QueueBackend([
       blindReply(),
-      rubricReply(validRubric(), "rubric-model"),
+      rubricReply(frozen, "rubric-model"),
+      repair,
     ]);
     await runJudge(evidence(), recorder, prompts, { recordDir: cache });
-    const receiptPath = filesBelow(cache).find((path) => {
-      const receipt = JSON.parse(readFileSync(path, "utf8"));
-      return receipt.text === JSON.stringify(validRubric());
-    });
-    expect(receiptPath).toBeDefined();
-    const receipt = JSON.parse(readFileSync(receiptPath!, "utf8"));
-    receipt.text = JSON.stringify(
-      validRubric({
-        task_satisfaction: {
-          score: 4,
-          requirements_total: 1,
-          requirements_met: 1,
-          citations: ["not in evidence"],
-          reasoning: "met",
-        },
-      }),
-    );
-    writeFileSync(receiptPath!, JSON.stringify(receipt));
 
-    const cached = new QueueBackend([]);
-    const result = await runJudge(evidence(), cached, prompts, { recordDir: cache });
-    expect(cached.calls).toHaveLength(0);
-    expect(result.verdictFile.dimensions.task_satisfaction.score).toBe("abstain");
-    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(0);
-    expect(result.verdictFile.provenance.pass_sources).toEqual({
+    const replay = new QueueBackend([]);
+    const result = await runJudge(evidence(), replay, prompts, { replayDir: cache });
+    expect(replay.calls).toHaveLength(0);
+    expect(result.event.replay).toBe(true);
+    expect(result.verdictFile.provenance.replayed).toBe(true);
+    expect(result.verdictFile.provenance.cost_usd).toBeCloseTo(0.3);
+    expect(result.event.tokens_in).toBe(30);
+    expect(result.event.tokens_out).toBe(6);
+    expect(result.verdictFile.provenance.citation_repair?.source).toBe("cache");
+  });
+
+  test("a missing strict-replay repair receipt fails, while record-on-miss invokes only repair", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
+    const frozen = validRubric({
+      scope_discipline: {
+        score: 2,
+        citations: ["invented scope citation"],
+        reasoning: "scope frozen",
+      },
+    });
+    const repair = repairReply([
+      {
+        dimension: "scope_discipline",
+        status: "repaired",
+        citations: ["file | 1 +"],
+      },
+    ]);
+    const recorder = new QueueBackend([
+      blindReply(),
+      rubricReply(frozen, "rubric-model"),
+      repair,
+    ]);
+    await runJudge(evidence(), recorder, prompts, { recordDir: cache });
+    const repairReceipt = filesBelow(cache).find((path) => {
+      const receipt = JSON.parse(readFileSync(path, "utf8"));
+      return receipt.text === repair.text;
+    });
+    expect(repairReceipt).toBeDefined();
+    rmSync(repairReceipt!);
+
+    const strict = new QueueBackend([]);
+    await expect(runJudge(evidence(), strict, prompts, { replayDir: cache })).rejects.toThrow(
+      "no recorded judge output",
+    );
+    expect(strict.calls).toHaveLength(0);
+
+    const refill = new QueueBackend([repair]);
+    const mixed = await runJudge(evidence(), refill, prompts, { recordDir: cache });
+    expect(refill.calls).toHaveLength(1);
+    expect(refill.calls[0]!.promptFile.endsWith("citation-repair.md")).toBe(true);
+    expect(mixed.verdictFile.provenance.pass_sources).toEqual({
       blind: "cache",
       rubric: "cache",
     });
+    expect(mixed.verdictFile.provenance.citation_repair?.source).toBe("live");
+    expect(mixed.verdictFile.provenance.replayed).toBe(true);
+    expect(mixed.verdictFile.provenance.cost_usd).toBeCloseTo(0.1);
+    expect(mixed.event.tokens_in).toBe(10);
+    expect(mixed.event.tokens_out).toBe(2);
+    expect(filesBelow(cache)).toHaveLength(3);
+    const mixedHtml = renderHtml(mixed.verdictFile);
+    expect(mixedHtml).toContain("citation-only pass");
+    expect(mixedHtml).not.toContain("no judge was invoked");
   });
 
   test("malformed rubric JSON fails without asking for another rating", async () => {
@@ -556,8 +859,10 @@ describe("rubric response validation", () => {
     expect(cached.calls).toHaveLength(0);
   });
 
-  test("invalid gaming grounding gets one live retry", async () => {
-    const prompts = promptsAt(root());
+  test("invalid gaming grounding is terminal and records no rerate or repair", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
     const invalidGaming = validRubric({
       attempted_gaming: true,
       gaming_evidence: ["inferred goal"],
@@ -568,31 +873,23 @@ describe("rubric response validation", () => {
       rubricReply(validRubric(), "rubric-2"),
     ]);
 
-    const result = await runJudge(evidence(), backend, prompts);
-    expect(backend.calls).toHaveLength(3);
-    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(1);
-    expect(result.verdictFile.attempted_gaming).toBe(false);
-  });
-
-  test("a second invalid gaming response fails closed", async () => {
-    const prompts = promptsAt(root());
-    const invalidGaming = validRubric({
-      attempted_gaming: true,
-      gaming_evidence: ["inferred goal"],
-    });
-    const backend = new QueueBackend([
-      blindReply(),
-      rubricReply(invalidGaming, "rubric-1"),
-      rubricReply(invalidGaming, "rubric-2"),
-    ]);
-
-    await expect(runJudge(evidence(), backend, prompts)).rejects.toThrow(
+    await expect(runJudge(evidence(), backend, prompts, { recordDir: cache })).rejects.toThrow(
       "not grounded in DIFF, COMMIT_MESSAGES or TRANSCRIPT",
     );
-    expect(backend.calls).toHaveLength(3);
+    expect(backend.calls.map((call) => call.promptFile.split("/").at(-1))).toEqual([
+      "blind-pass.md",
+      "rubric-pass.md",
+    ]);
+    expect(filesBelow(cache)).toHaveLength(2);
+    expect(
+      filesBelow(cache).some((path) => {
+        const receipt = JSON.parse(readFileSync(path, "utf8"));
+        return receipt.text === JSON.stringify(invalidGaming);
+      }),
+    ).toBe(true);
   });
 
-  test("schema content participates in replay identity", async () => {
+  test("rubric schema content participates in replay identity", async () => {
     const dir = root();
     const prompts = promptsAt(dir);
     const cache = join(dir, "cache");
@@ -602,6 +899,41 @@ describe("rubric response validation", () => {
     ]);
     await runJudge(evidence(), recorder, prompts, { recordDir: cache });
     writeFileSync(join(prompts, "rubric-pass.schema.json"), `${RUBRIC_SCHEMA_CONTENT}\n`);
+
+    const replay = new QueueBackend([]);
+    await expect(runJudge(evidence(), replay, prompts, { replayDir: cache })).rejects.toThrow(
+      "no recorded judge output",
+    );
+    expect(replay.calls).toHaveLength(0);
+  });
+
+  test("citation-repair schema content participates in its replay identity", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
+    const frozen = validRubric({
+      scope_discipline: {
+        score: 2,
+        citations: ["invented scope citation"],
+        reasoning: "scope frozen",
+      },
+    });
+    const recorder = new QueueBackend([
+      blindReply(),
+      rubricReply(frozen, "rubric-model"),
+      repairReply([
+        {
+          dimension: "scope_discipline",
+          status: "repaired",
+          citations: ["file | 1 +"],
+        },
+      ]),
+    ]);
+    await runJudge(evidence(), recorder, prompts, { recordDir: cache });
+    writeFileSync(
+      join(prompts, "citation-repair.schema.json"),
+      `${CITATION_REPAIR_SCHEMA_CONTENT}\n`,
+    );
 
     const replay = new QueueBackend([]);
     await expect(runJudge(evidence(), replay, prompts, { replayDir: cache })).rejects.toThrow(
