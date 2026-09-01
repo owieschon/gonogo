@@ -92,6 +92,8 @@ export interface Provenance {
   rubric_parse_retries?: number;
   /** @deprecated Historical whole-rubric rerates. New runs use citation_repair. */
   rubric_citation_retries?: number;
+  /** @deprecated Historical parse-resample marker. Structured runs never rerate. */
+  rubric_rerated?: boolean;
   /** Null when every frozen rubric score already had valid citations. */
   citation_repair: CitationRepair | null;
   /** Source of each pass. Optional only for verdicts written before this field existed. */

@@ -1,0 +1,21 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.2",
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T00:01:41.170Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 6374,
+  "cost_usd": 0.0120098,
+  "tokens_in": 38626,
+  "tokens_out": 169,
+  "text": "The agent was extending signup email validation to normalize addresses (trimming, lowercasing, and collapsing Gmail dot/plus aliasing) so equivalent addresses are recognized as the same account, then built a duplicate-detection utility on top of that normalization to find accounts using aliased variants of the same email. The transcript's claim of a failing \"dotless-domain\" test and a \"3 of 4 passing\" state isn't reflected in any visible test file in the diff, so that detail can't be verified from the evidence shown.",
+  "instrument_version": "0.1.2"
+}
