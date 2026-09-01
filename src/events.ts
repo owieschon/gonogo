@@ -8,10 +8,16 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { CITATION_REPAIR_DIMENSIONS, DIMENSIONS } from "./types.ts";
-import type { CitationRepair, CitationRepairDimension, Dimension } from "./types.ts";
+import { CITATION_REPAIR_DIMENSIONS, DIMENSIONS, JUDGE_CALL_ROLES } from "./types.ts";
+import type {
+  CallReceiptProvenance,
+  CitationRepair,
+  CitationRepairDimension,
+  Dimension,
+  GamingCitationRepair,
+} from "./types.ts";
 
-export const EVENT_SCHEMA_VERSION = 4;
+export const EVENT_SCHEMA_VERSION = 5;
 
 export type EventKind = "fixture" | "real" | "rater" | "outcome";
 
@@ -66,6 +72,9 @@ export interface JudgeEvent extends BaseEvent {
   cost_usd: number | null;
   /** Citation-only repair provenance; null when the frozen rubric reply needed no repair. */
   citation_repair: CitationRepair | null;
+  gaming_citation_repair: GamingCitationRepair | null;
+  /** Null only on migrated v1-v4 events that predate per-call receipt binding. */
+  call_receipts: CallReceiptProvenance[] | null;
   /** True when either judge pass came from cache rather than a live call. */
   replay: boolean;
 }
@@ -256,6 +265,100 @@ function validateCitationRepair(
   return repair as unknown as CitationRepair;
 }
 
+function stringArray(value: unknown, label: string, allowBlank = false): string[] {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  for (const item of value) {
+    if (typeof item !== "string" || (!allowBlank && item.trim() === "")) {
+      throw new Error(`${label} must contain ${allowBlank ? "strings" : "nonblank strings"}`);
+    }
+  }
+  return value;
+}
+
+function validateGamingCitationRepair(
+  value: unknown,
+  event: Record<string, unknown>,
+  kind: "fixture" | "real",
+): GamingCitationRepair | null {
+  if (value === null) return null;
+  const repair = recordOf(value, `${kind}.gaming_citation_repair`);
+  const expected = [
+    "source",
+    "prompt_sha256",
+    "evidence_sha256",
+    "receipt_sha256",
+    "rejected_evidence",
+    "corrected_evidence",
+  ].sort();
+  const actual = Object.keys(repair).sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    throw new Error(`${kind}.gaming_citation_repair must contain exactly ${expected.join(", ")}`);
+  }
+  if (repair.source !== "live" && repair.source !== "cache") {
+    throw new Error(`${kind}.gaming_citation_repair.source must be live or cache`);
+  }
+  sha256Field(repair.prompt_sha256, `${kind}.gaming_citation_repair.prompt_sha256`);
+  sha256Field(repair.evidence_sha256, `${kind}.gaming_citation_repair.evidence_sha256`);
+  sha256Field(repair.receipt_sha256, `${kind}.gaming_citation_repair.receipt_sha256`);
+  if (stringArray(repair.rejected_evidence, `${kind}.gaming_citation_repair.rejected_evidence`, true).length === 0) {
+    throw new Error(`${kind}.gaming_citation_repair.rejected_evidence must not be empty`);
+  }
+  if (stringArray(repair.corrected_evidence, `${kind}.gaming_citation_repair.corrected_evidence`).length === 0) {
+    throw new Error(`${kind}.gaming_citation_repair.corrected_evidence must not be empty`);
+  }
+  if (event.attempted_gaming !== true) {
+    throw new Error(`${kind}.gaming_citation_repair requires attempted_gaming=true`);
+  }
+  if (repair.source === "cache" && event.replay !== true) {
+    throw new Error(`${kind}.gaming_citation_repair from cache requires replay=true`);
+  }
+  const hashes = event.prompt_hashes as Record<string, unknown>;
+  for (const path of [
+    "prompts/gaming-citation-repair.md",
+    "prompts/gaming-citation-repair.schema.json",
+  ]) {
+    if (!Object.hasOwn(hashes, path)) {
+      throw new Error(`${kind}.gaming_citation_repair requires ${path} in ${kind}.prompt_hashes`);
+    }
+  }
+  return repair as unknown as GamingCitationRepair;
+}
+
+function validateCallReceipts(
+  value: unknown,
+  event: Record<string, unknown>,
+  kind: "fixture" | "real",
+): CallReceiptProvenance[] | null {
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length < 2) {
+    throw new Error(`${kind}.call_receipts must contain at least blind and rubric receipts`);
+  }
+  let prior = -1;
+  for (const [index, item] of value.entries()) {
+    const receipt = recordOf(item, `${kind}.call_receipts[${index}]`);
+    const keys = Object.keys(receipt).sort();
+    if (keys.join(",") !== "receipt_sha256,role,source") {
+      throw new Error(`${kind}.call_receipts[${index}] must contain exactly role, source, receipt_sha256`);
+    }
+    const roleIndex = (JUDGE_CALL_ROLES as readonly unknown[]).indexOf(receipt.role);
+    if (roleIndex <= prior) {
+      throw new Error(`${kind}.call_receipts must use unique roles in invocation order`);
+    }
+    prior = roleIndex;
+    if (receipt.source !== "live" && receipt.source !== "cache") {
+      throw new Error(`${kind}.call_receipts[${index}].source must be live or cache`);
+    }
+    if (receipt.source === "cache" && event.replay !== true) {
+      throw new Error(`${kind}.call_receipts from cache require replay=true`);
+    }
+    sha256Field(receipt.receipt_sha256, `${kind}.call_receipts[${index}].receipt_sha256`);
+  }
+  if ((value[0] as any).role !== "blind" || (value[1] as any).role !== "rubric") {
+    throw new Error(`${kind}.call_receipts must begin with blind and rubric`);
+  }
+  return value as CallReceiptProvenance[];
+}
+
 function outcomeForScores(scores: Record<string, unknown>): {
   abstained: boolean;
   verdict: string;
@@ -381,6 +484,14 @@ function validateCurrentEvent(value: unknown): GonogoEvent {
     throw new Error(`${kind}.citation_repair must be an object or null`);
   }
   validateCitationRepair(event.citation_repair, event, kind);
+  if (!Object.hasOwn(event, "gaming_citation_repair")) {
+    throw new Error(`${kind}.gaming_citation_repair must be an object or null`);
+  }
+  validateGamingCitationRepair(event.gaming_citation_repair, event, kind);
+  if (!Object.hasOwn(event, "call_receipts")) {
+    throw new Error(`${kind}.call_receipts must be an array or null`);
+  }
+  validateCallReceipts(event.call_receipts, event, kind);
   return event as unknown as JudgeEvent;
 }
 
@@ -415,7 +526,8 @@ export function requireOutcomeRun(
 }
 
 /**
- * v1/v2/v3 → v4. Earlier versions had no model-independent subject hash;
+ * v1-v4 → v5. Earlier versions had no model-independent subject hash or
+ * per-call receipt/citation-correction provenance;
  * they migrate to null and must be reinspected before an applicability-aware
  * consumer acts. Other absent fields become their documented defaults; an
  * absent legacy score becomes an abstention, never an invented judgement.
@@ -446,6 +558,10 @@ export function migrateEvent(raw: any): GonogoEvent {
     e.attempted_gaming ??= false;
     if (version < 3) e.citation_repair = null;
     if (version < 4) e.subject_hash = null;
+    if (version < 5) {
+      e.gaming_citation_repair = null;
+      e.call_receipts = null;
+    }
   }
   if (e.kind === "rater") {
     e.review_minutes ??= null;

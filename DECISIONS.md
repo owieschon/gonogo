@@ -147,6 +147,16 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   one substitution. Both versions preserve the original finding and evidence
   cardinality. DIFF and COMMIT_MESSAGES joins, broader whitespace
   normalization, ambiguity, and a second substituted boundary remain terminal.
+- **Every returned call is receipted before validation; gaming correction is
+  citation-only.** Live runs without `--record` retain role-named run-local
+  `gonogo/replay@2` receipts for blind, rubric, dimension correction and gaming
+  correction calls. Terminal errors are immutable sidecars, so validation
+  cannot erase provider-reported output, usage or cost. A schema-valid rubric
+  freezes scores and the attempted-gaming decision; one correction call may
+  replace rejected gaming strings only with unique exact physical source lines.
+  Provenance retains the rejected strings and binds every call receipt. This
+  affects I3, I5 and I7, and bumps only the event schema: a paid live gate and
+  new instrument version wait for review and adapter-branch integration.
 - **I2 is a compile error, not a convention.** `blindAttachments` takes a
   branded `BlindPacket`. Without the brand, `Evidence` would satisfy the shape
   structurally — it also has `diff` and `transcript` — and the invariant would
@@ -157,10 +167,12 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   includes the prompt hash, so a prompt edit misses loudly.
 - **The log was born at schema v2.** Both addenda landed in one session, so no
   v1 events were ever written. Schema v3 adds citation-repair provenance;
-  schema v4 adds `subject_hash`. Older judge events migrate with no repair and
-  a null subject identity, so consumers must call them `UNVERIFIABLE`, not
-  current. The migrations are covered by tests rather than exercised by stored
-  v1 data; that is the honest state of it.
+  schema v4 adds `subject_hash`; schema v5 adds gaming-correction provenance and
+  per-call receipt hashes. Older judge events migrate with no repairs, a null
+  subject identity where applicable, and null call-receipt provenance, so
+  consumers must call pre-v4 subjects `UNVERIFIABLE`, not current. The
+  migrations are covered by tests rather than exercised by stored v1 data;
+  that is the honest state of it.
 - **Exit codes map five verdicts onto four codes.** `go` and `go-with-notes`
   both exit 0 — a go with notes is still a go — and `hold` joins `no-go` at 1,
   because neither is a go. `inconclusive` is 2 and tool failure is 3, so a
