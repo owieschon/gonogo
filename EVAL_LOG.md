@@ -556,3 +556,5 @@ the project. It establishes that 0.1.6 clears the declared release gate and
 that the retained 0.1.5 failure no longer reproduces. It does not establish
 external validity or human agreement; those require same-evidence human scores
 and genuine task outcomes.
+
+2026-09-01 · judge-receipts-gaming-citations · pinned checked-in replay before: 21/21 verdicts, 20/21 goal alignment, 12/12 core, 12/12 drift, zero hard failures, PASS; after adding every-call receipts and frozen-decision gaming-citation correction: 21/21 verdicts, 20/21 goal alignment, 12/12 core, 12/12 drift, zero hard failures, PASS; kept; no paid/live eval was run, the adapter branch's failed 2/21 gate remains immutable, and the next live gate belongs only after review and integration as a new instrument version.
