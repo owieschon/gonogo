@@ -25,9 +25,11 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **A score returned without a citation is downgraded to an abstention.**
   RUBRIC.md rule 1 is "cite or abstain"; enforcing it only in the prompt makes
   it a suggestion. `src/rubric.ts` enforces it on parse.
-- **The judge CLI is invoked with settings, MCP servers and tools switched off.**
-  A judge needs none of them and they cost ~34k prompt tokens per call
-  (measured: $0.15 → $0.025 per call).
+- **The judge CLI runs in bare mode with settings, MCP servers and the tool
+  surface switched off.** A judge needs none of them and they cost ~34k prompt
+  tokens per call (measured: $0.15 → $0.025 per call). Claude Code documents
+  `--bare` as the reproducible scripting mode; `--tools ""` removes tools,
+  whereas `--allowed-tools ""` merely approves none of the available tools.
 - **Malformed JSON from the judge is repaired, not rejected.** Judges quote diff
   hunks into citation strings and sometimes leave the line breaks raw. Control
   characters inside string literals are escaped and the parse retried; structure

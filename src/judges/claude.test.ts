@@ -14,6 +14,10 @@ const structuredSchema = {
 
 test("passes a structured schema to Claude without changing ordinary calls", () => {
   const ordinary = claudeArgs("claude-sonnet-5");
+  expect(ordinary).toContain("--bare");
+  expect(ordinary).toContain("--tools");
+  expect(ordinary[ordinary.indexOf("--tools") + 1]).toBe("");
+  expect(ordinary).not.toContain("--allowed-tools");
   expect(ordinary).toContain("--model");
   expect(ordinary).not.toContain("--json-schema");
 
