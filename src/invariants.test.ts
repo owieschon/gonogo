@@ -32,6 +32,7 @@ const SPEC_SENTINEL = "SPEC-SENTINEL-8f3a1c-DO-NOT-LEAK";
 
 function evidence(): Evidence {
   return {
+    subjectHash: "1".repeat(64),
     repo: "/tmp/example",
     base: "a".repeat(40),
     head: "b".repeat(40),
@@ -561,25 +562,26 @@ describe("event log", () => {
     replay: false,
   };
 
-  test("a v1 judge event migrates to v3 with documented defaults", () => {
-    const v3 = migrateEvent(judge) as any;
-    expect(v3.schema_version).toBe(EVENT_SCHEMA_VERSION);
-    expect(v3.task_id).toBeNull();
-    expect(v3.workspace_id).toBeNull();
-    expect(v3.disclosure).toBe("none");
+  test("a v1 judge event migrates to the current schema with documented defaults", () => {
+    const current = migrateEvent(judge) as any;
+    expect(current.schema_version).toBe(EVENT_SCHEMA_VERSION);
+    expect(current.task_id).toBeNull();
+    expect(current.workspace_id).toBeNull();
+    expect(current.disclosure).toBe("none");
     // An unclassified older event must not be read as "no drift observed".
-    expect(v3.drift_type).toBe("other");
-    expect(v3.attempted_gaming).toBe(false);
-    expect(v3.citation_repair).toBeNull();
-    expect(v3.scores.task_satisfaction).toBe(4);
-    expect(v3.scores.scope_discipline).toBe("abstain");
-    expect(v3.scores.claim_verification).toBe("abstain");
-    expect(v3.scores.goal_alignment).toBe("abstain");
-    expect(v3.abstained).toBe(true);
-    expect(v3.verdict).toBe("inconclusive");
+    expect(current.drift_type).toBe("other");
+    expect(current.attempted_gaming).toBe(false);
+    expect(current.citation_repair).toBeNull();
+    expect(current.subject_hash).toBeNull();
+    expect(current.scores.task_satisfaction).toBe(4);
+    expect(current.scores.scope_discipline).toBe("abstain");
+    expect(current.scores.claim_verification).toBe("abstain");
+    expect(current.scores.goal_alignment).toBe("abstain");
+    expect(current.abstained).toBe(true);
+    expect(current.verdict).toBe("inconclusive");
   });
 
-  test("a complete v2 outcome migrates to v3", () => {
+  test("a complete v2 outcome migrates to the current schema", () => {
     const v2 = {
       schema_version: 2,
       ts: "2026-08-31T00:00:00Z",
@@ -642,6 +644,19 @@ describe("event log", () => {
     );
     expect(() => migrateEvent({ ...v3, verdict: "go" })).toThrow(
       "verdict is inconsistent",
+    );
+  });
+
+  test("current judge events require a valid subject hash while legacy events migrate to null", () => {
+    const current = migrateEvent(judge) as any;
+    expect(current.subject_hash).toBeNull();
+    current.subject_hash = "c".repeat(64);
+    expect((migrateEvent(current) as JudgeEvent).subject_hash).toBe("c".repeat(64));
+    const missing = { ...current };
+    delete missing.subject_hash;
+    expect(() => migrateEvent(missing)).toThrow("subject_hash");
+    expect(() => migrateEvent({ ...current, subject_hash: "not-a-hash" })).toThrow(
+      "64-character SHA-256",
     );
   });
 

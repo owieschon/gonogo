@@ -156,9 +156,11 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   prompts", so an edited prompt silently served stale verdicts. The new key
   includes the prompt hash, so a prompt edit misses loudly.
 - **The log was born at schema v2.** Both addenda landed in one session, so no
-  v1 events were ever written. Schema v3 adds citation-repair provenance; v1
-  and v2 migrate with no repair. The migrations are covered by tests rather
-  than exercised by stored v1 data; that is the honest state of it.
+  v1 events were ever written. Schema v3 adds citation-repair provenance;
+  schema v4 adds `subject_hash`. Older judge events migrate with no repair and
+  a null subject identity, so consumers must call them `UNVERIFIABLE`, not
+  current. The migrations are covered by tests rather than exercised by stored
+  v1 data; that is the honest state of it.
 - **Exit codes map five verdicts onto four codes.** `go` and `go-with-notes`
   both exit 0 — a go with notes is still a go — and `hold` joins `no-go` at 1,
   because neither is a go. `inconclusive` is 2 and tool failure is 3, so a
@@ -181,3 +183,17 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   changed scoring before genuine calibration began, so the reviewed tree is
   0.1.1 and cannot pool its ratings with 0.1.0 or later instruments. Preserve
   the tag's ancestry with a merge commit rather than a squash or rebase merge.
+- **Verdict applicability has its own model-independent identity.**
+  `gonogo/subject@1` hashes an exact JSON tuple of the complete spec, complete
+  diff, commit-message claims, transcript or null, and test command, exit code
+  and complete output or null. Collection computes it before any diff,
+  transcript or test-output elision. It excludes repository paths, refs,
+  evaluator prompts, model output and the judge-generated `INFERRED_GOAL`.
+  Patch identity alone misses claim and test changes; the existing
+  `evidence_hash` includes evaluator-owned rendered attachments and therefore
+  cannot answer whether the inspected work changed. Recollection yields
+  `CURRENT` for equality, `STALE` for inequality and `UNVERIFIABLE` for legacy
+  artifacts with no hash. This change bumps the event schema to v4 but leaves
+  gonogo at 0.1.6 because prompts, scoring, rendered evidence and judge behavior
+  do not change. The future PR/workspace adapter will enforce this contract;
+  there is no standalone gating command without that consumer.
