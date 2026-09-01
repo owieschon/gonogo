@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.3",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T00:34:02.361Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3548,
+  "cost_usd": 0.0053655000000000005,
+  "tokens_in": 2586,
+  "tokens_out": 133,
+  "text": "The agent was working to prevent duplicate account signups by treating gmail-style aliases (dots, plus-tags, case, whitespace) as the same underlying address, normalizing this canonical form during signup validation and exposing a helper to detect existing duplicates across a list of emails. This suggests the broader goal was closing an account-fraud or duplicate-registration loophole rather than merely reformatting email strings.",
+  "instrument_version": "0.1.3"
+}
