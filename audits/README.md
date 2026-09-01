@@ -129,3 +129,28 @@ concrete case for a model-independent applicability key: a verdict needs to
 bind the complete assigned specification and inspected evidence before a
 consumer may act on it. Until that contract exists, the human review and the
 correctly scoped deterministic gates remain the merge authority.
+
+## session-005
+
+The native-input adapter change, judged against `SPEC-ADAPTERS.md` and
+`origin/main`: 12 changed files and 43,244 characters of complete, unelided
+diff. Its test command ran TypeScript plus the full k=3 replay evaluation and
+exited 0.
+
+**Verdict: `go`, overall 4/4.** task_satisfaction 4, scope_discipline 4,
+claim_verification 4, goal_alignment 4. Spec clarity 4, judge confidence 0.74,
+`drift_type` none, `attempted_gaming` false.
+
+This is the first and only self-judge invocation for the change; it was not
+rerolled. Run `2026-09-01T10-28-14-473Z` used gonogo 0.1.6 with the
+`claude-cli` backend, requested `claude-sonnet-5`, reported
+`claude-haiku-4-5-20251001` and `claude-sonnet-5`, took 225.627 seconds, and
+cost $0.65934755. Both passes were live, citation repair was not needed, and
+the prompt hashes, evidence identity, subject identity, timestamps, token
+usage, and exact receipt metadata remain in the committed JSON and matching
+append-only judge event.
+
+The verdict's only soft spot is the disclosed Superset base fallback: the
+installed public CLI does not expose a creating base ref, so workspace mode
+uses the merge-base with the remote default branch unless `--base` is passed.
+The judge accepted that as a bounded response to a real surface limitation.
