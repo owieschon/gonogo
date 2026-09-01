@@ -12,6 +12,7 @@ import type {
   VerdictFile,
 } from "./types.ts";
 import type { Attachment, JudgeBackend, JudgeResponse } from "./judges/index.ts";
+import type { StructuredOutputSchema } from "./judges/types.ts";
 
 import { GONOGO_VERSION } from "./version.ts";
 import { blindAttachments, blindPacket } from "./blind.ts";
@@ -42,11 +43,7 @@ export function computeVerdict(dims: Record<Dimension, DimensionResult>): {
   return { verdict: "no-go", overall };
 }
 
-/**
- * Judges quote diff hunks into citation strings and sometimes leave the line
- * breaks raw, which is invalid JSON. Escape control characters that appear
- * inside string literals; leave structure alone.
- */
+/** Legacy parser compatibility; runJudge uses strict schema-constrained JSON. */
 export function repairJson(s: string): string {
   let out = "";
   let inStr = false;
@@ -76,10 +73,7 @@ export function repairJson(s: string): string {
   return out;
 }
 
-/**
- * Models wrap JSON in prose or fences no matter how firmly asked not to.
- * Pull out the first balanced object rather than failing the whole run.
- */
+/** Legacy parser compatibility; live and replayed rubric calls do not use this. */
 export function extractJson(text: string): any {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -177,6 +171,150 @@ function coerceDrift(raw: any): DriftType {
 
 export function parseRubricPass(text: string): RubricPass {
   const raw = extractJson(text);
+  return parseRubricObject(raw);
+}
+
+function schemaAtRef(
+  root: StructuredOutputSchema,
+  ref: string,
+): StructuredOutputSchema {
+  if (!ref.startsWith("#/")) throw new Error(`unsupported rubric schema reference ${ref}`);
+  let value: unknown = root;
+  for (const encoded of ref.slice(2).split("/")) {
+    const key = encoded.replace(/~1/g, "/").replace(/~0/g, "~");
+    if (value === null || typeof value !== "object" || !(key in value)) {
+      throw new Error(`unresolved rubric schema reference ${ref}`);
+    }
+    value = (value as Record<string, unknown>)[key];
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`rubric schema reference ${ref} does not resolve to an object`);
+  }
+  return value as StructuredOutputSchema;
+}
+
+/** Validate the JSON Schema subset used by rubric-pass.schema.json. */
+function schemaErrors(
+  value: unknown,
+  schema: StructuredOutputSchema,
+  root: StructuredOutputSchema,
+  path = "$",
+): string[] {
+  if (typeof schema.$ref === "string") {
+    return schemaErrors(value, schemaAtRef(root, schema.$ref), root, path);
+  }
+  if (Array.isArray(schema.oneOf)) {
+    const matches = schema.oneOf.filter((candidate) => {
+      if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new Error(`invalid oneOf entry in rubric schema at ${path}`);
+      }
+      return schemaErrors(value, candidate as StructuredOutputSchema, root, path).length === 0;
+    });
+    return matches.length === 1 ? [] : [`${path} does not match exactly one allowed shape`];
+  }
+
+  const errors: string[] = [];
+  const type = schema.type;
+  const objectValue =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  const typeMatches =
+    type === undefined ||
+    (type === "object" && objectValue !== null) ||
+    (type === "array" && Array.isArray(value)) ||
+    (type === "string" && typeof value === "string") ||
+    (type === "boolean" && typeof value === "boolean") ||
+    (type === "number" && typeof value === "number" && Number.isFinite(value)) ||
+    (type === "integer" && typeof value === "number" && Number.isInteger(value));
+  if (!typeMatches) return [`${path} must be ${String(type)}`];
+
+  if ("const" in schema && !Object.is(value, schema.const)) {
+    errors.push(`${path} must equal ${JSON.stringify(schema.const)}`);
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.some((item) => Object.is(item, value))) {
+    errors.push(`${path} is not an allowed value`);
+  }
+  if (typeof value === "number") {
+    if (typeof schema.minimum === "number" && value < schema.minimum) {
+      errors.push(`${path} is below its minimum`);
+    }
+    if (typeof schema.maximum === "number" && value > schema.maximum) {
+      errors.push(`${path} is above its maximum`);
+    }
+  }
+  if (typeof value === "string" && typeof schema.pattern === "string") {
+    if (!new RegExp(schema.pattern).test(value)) errors.push(`${path} does not match its pattern`);
+  }
+  if (Array.isArray(value)) {
+    if (typeof schema.minItems === "number" && value.length < schema.minItems) {
+      errors.push(`${path} has fewer than ${schema.minItems} items`);
+    }
+    if (schema.items !== null && typeof schema.items === "object" && !Array.isArray(schema.items)) {
+      value.forEach((item, index) => {
+        errors.push(
+          ...schemaErrors(
+            item,
+            schema.items as StructuredOutputSchema,
+            root,
+            `${path}[${index}]`,
+          ),
+        );
+      });
+    }
+  }
+  if (objectValue) {
+    const properties =
+      schema.properties !== null &&
+      typeof schema.properties === "object" &&
+      !Array.isArray(schema.properties)
+        ? (schema.properties as Record<string, unknown>)
+        : {};
+    const required = Array.isArray(schema.required) ? schema.required.map(String) : [];
+    for (const key of required) {
+      if (!(key in objectValue)) errors.push(`${path}.${key} is required`);
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(objectValue)) {
+        if (!(key in properties)) errors.push(`${path}.${key} is not allowed`);
+      }
+    }
+    for (const [key, childSchema] of Object.entries(properties)) {
+      if (!(key in objectValue)) continue;
+      if (childSchema === null || typeof childSchema !== "object" || Array.isArray(childSchema)) {
+        throw new Error(`invalid rubric schema property ${path}.${key}`);
+      }
+      errors.push(
+        ...schemaErrors(
+          objectValue[key],
+          childSchema as StructuredOutputSchema,
+          root,
+          `${path}.${key}`,
+        ),
+      );
+    }
+  }
+  return errors;
+}
+
+function parseStructuredRubric(
+  text: string,
+  schema: StructuredOutputSchema,
+): { raw: any; pass: RubricPass } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error(`judge did not return strict rubric JSON. First 800 chars:\n${text.slice(0, 800)}`);
+  }
+  const errors = schemaErrors(raw, schema, schema);
+  if (errors.length > 0) {
+    throw new Error(`judge returned schema-invalid rubric output: ${errors.slice(0, 5).join("; ")}`);
+  }
+  return { raw, pass: parseRubricObject(raw) };
+}
+
+function parseRubricObject(raw: any): RubricPass {
   const conf = Number(raw.judge_confidence);
   const gaming = Array.isArray(raw.gaming_evidence) ? raw.gaming_evidence.map(String) : [];
   return {
@@ -198,37 +336,35 @@ export function parseRubricPass(text: string): RubricPass {
   };
 }
 
-/** Enforce cite-or-abstain against the evidence bytes, not the judge's confidence. */
+const RUBRIC_RESULT_NAMES = [...DIMENSIONS, "spec_clarity"] as const;
+
+function citationOccursInOneBlock(citation: string, attachments: Attachment[]): boolean {
+  return (
+    citation.trim() !== "" &&
+    !citation.includes("\n") &&
+    !citation.includes("\r") &&
+    attachments.some((attachment) => attachment.content.includes(citation))
+  );
+}
+
+function citationSourcesFor(name: string, attachments: Attachment[]): Attachment[] {
+  return name === "goal_alignment"
+    ? attachments
+    : attachments.filter((attachment) => attachment.name !== "INFERRED_GOAL");
+}
+
+/** Enforce cite-or-abstain against exact evidence-block bytes. */
 export function verifyRubricCitations(pass: RubricPass, attachments: Attachment[]): RubricPass {
-  // Opaque transcripts and Markdown specs wrap prose across physical lines.
-  // Collapse whitespace only; every non-whitespace citation byte must still
-  // occur in order in the supplied evidence.
-  const comparable = (text: string) => text.replace(/\s+/g, " ").trim();
-  const evidence = attachments.flatMap((attachment) => {
-    const variants = [comparable(attachment.content)];
-    if (attachment.lang === "diff" || attachment.name === "DIFF") {
-      const withoutMarkers = attachment.content
-        .split("\n")
-        .map((line) => (/^[ +\-]/.test(line) ? line.slice(1) : line))
-        .join("\n");
-      variants.push(comparable(withoutMarkers));
-    }
-    return variants;
-  });
   const verify = (name: string, result: DimensionResult): DimensionResult => {
     if (isAbstain(result)) return result;
-    const missing = result.citations.filter(
-      (citation) => {
-        const normalized = comparable(citation);
-        return normalized === "" || !evidence.some((source) => source.includes(normalized));
-      },
-    );
+    const sources = citationSourcesFor(name, attachments);
+    const missing = result.citations.filter((citation) => !citationOccursInOneBlock(citation, sources));
     if (missing.length === 0) return result;
     return {
       score: "abstain",
       reason:
-        `judge scored ${name} but ${missing.length} citation${missing.length === 1 ? " does" : "s do"} ` +
-        "not occur in the supplied evidence after whitespace normalization",
+        `judge scored ${name} but ${missing.length} citation${missing.length === 1 ? " is" : "s are"} ` +
+        "not a nonblank, single-line exact substring of one supplied evidence block",
       citations: result.citations,
     };
   };
@@ -241,6 +377,66 @@ export function verifyRubricCitations(pass: RubricPass, attachments: Attachment[
     goal_alignment: verify("goal_alignment", pass.goal_alignment),
     spec_clarity: verify("spec_clarity", pass.spec_clarity),
   };
+}
+
+/**
+ * Identify scored replies whose citation arrays are missing or ungrounded.
+ * Explicit abstentions are decisions, not validation failures, and never ask
+ * the model to rate the work a second time.
+ */
+function rubricCitationFailures(
+  raw: any,
+  pass: RubricPass,
+  attachments: Attachment[],
+): string[] {
+  const failures: string[] = [];
+  for (const name of RUBRIC_RESULT_NAMES) {
+    const rawResult = raw?.[name];
+    if (rawResult?.score === "abstain" || rawResult?.abstain === true) continue;
+    const result = pass[name];
+    const sources = citationSourcesFor(name, attachments);
+    const citations: string[] = isAbstain(result)
+      ? Array.isArray(rawResult?.citations)
+        ? rawResult.citations.map(String)
+        : []
+      : result.citations;
+    if (
+      citations.length === 0 ||
+      citations.some((citation) => !citationOccursInOneBlock(citation, sources))
+    ) {
+      failures.push(name);
+    }
+  }
+  return failures;
+}
+
+const GAMING_SOURCE_NAMES = new Set(["DIFF", "COMMIT_MESSAGES", "TRANSCRIPT"]);
+
+/**
+ * Gaming findings must quote work/session-controlled evidence. The inferred goal,
+ * spec and test result can influence scores but cannot be authored by the
+ * worker to address this evaluator.
+ */
+export function verifyGamingEvidence(
+  pass: RubricPass,
+  attachments: Attachment[],
+): RubricPass {
+  if (!pass.attempted_gaming && pass.gaming_evidence.length === 0) return pass;
+  if (pass.gaming_evidence.length === 0) {
+    throw new Error("judge set attempted_gaming without quoting work/session-controlled evidence");
+  }
+  const sources = attachments.filter((attachment) => GAMING_SOURCE_NAMES.has(attachment.name));
+  const invalid = pass.gaming_evidence.filter(
+    (quote) => quote.trim() === "" || !sources.some((source) => source.content.includes(quote)),
+  );
+  if (invalid.length > 0) {
+    throw new Error(
+      `judge returned ${invalid.length} gaming quote${invalid.length === 1 ? "" : "s"} ` +
+        "not grounded in DIFF, COMMIT_MESSAGES or TRANSCRIPT",
+    );
+  }
+  // A grounded quote is stronger than a contradictory boolean from the model.
+  return { ...pass, attempted_gaming: true };
 }
 
 function evidenceAttachments(ev: Evidence): Attachment[] {
@@ -267,13 +463,13 @@ export interface JudgeRunResult {
 }
 
 export interface RunJudgeOptions {
-  /** Extra rubric-pass attempts allowed when the reply will not parse. */
+  /** @deprecated Parse failures are terminal; retained for caller compatibility. */
   parseRetries?: number;
   /** Which of the k samples this is. Part of the replay cache key. */
   sample?: number;
-  /** Serve raw judge output from this cache instead of calling a judge. */
+  /** Serve cached provider text or normalized structured output instead of calling a judge. */
   replayDir?: string;
-  /** Record raw judge output into this cache. */
+  /** Record provider text or normalized structured output into this cache. */
   recordDir?: string;
   /** Append a judge event here. */
   eventsPath?: string;
@@ -296,6 +492,12 @@ interface CachedCall {
   fromCache: boolean;
 }
 
+interface StructuredCall {
+  schema: StructuredOutputSchema;
+  /** Exact file bytes: schema edits must change replay identity. */
+  schemaContent: string;
+}
+
 /**
  * One judge call, through the record/replay cache. In replay mode no judge is
  * invoked at all; a miss is an error naming the key, never a silent live call.
@@ -306,10 +508,15 @@ async function call(
   attachments: Attachment[],
   sample: number,
   opts: RunJudgeOptions,
+  structured?: StructuredCall,
 ): Promise<CachedCall> {
   const evidenceHash = evidenceHashOf(attachments);
+  const promptContent = readFileSync(promptFile, "utf8");
+  const promptIdentity = structured
+    ? `${promptContent}\n\u0000structured-output-schema\u0000\n${structured.schemaContent}`
+    : promptContent;
   const key: CacheKey = {
-    promptHash: sha256(readFileSync(promptFile, "utf8")),
+    promptHash: sha256(promptIdentity),
     evidenceHash,
     sample,
     backend: backend.name,
@@ -324,7 +531,15 @@ async function call(
     const hit = readCache(cacheDir, key);
     if (!hit && opts.replayDir) throw new Error(describeMiss(opts.replayDir, key));
     if (!hit) {
-      return { key, fromCache: false, response: await backend.invoke(promptFile, attachments) };
+      return {
+        key,
+        fromCache: false,
+        response: await backend.invoke(
+          promptFile,
+          attachments,
+          structured ? { structuredSchema: structured.schema } : undefined,
+        ),
+      };
     }
     return {
       key,
@@ -340,7 +555,15 @@ async function call(
       },
     };
   }
-  return { key, fromCache: false, response: await backend.invoke(promptFile, attachments) };
+  return {
+    key,
+    fromCache: false,
+    response: await backend.invoke(
+      promptFile,
+      attachments,
+      structured ? { structuredSchema: structured.schema } : undefined,
+    ),
+  };
 }
 
 function record(
@@ -370,6 +593,20 @@ export async function runJudge(
 ): Promise<JudgeRunResult> {
   const blindPrompt = join(promptsDir, "blind-pass.md");
   const rubricPrompt = join(promptsDir, "rubric-pass.md");
+  const rubricSchemaFile = join(promptsDir, "rubric-pass.schema.json");
+  const rubricSchemaContent = readFileSync(rubricSchemaFile, "utf8");
+  const rubricSchemaValue: unknown = JSON.parse(rubricSchemaContent);
+  if (
+    rubricSchemaValue === null ||
+    typeof rubricSchemaValue !== "object" ||
+    Array.isArray(rubricSchemaValue)
+  ) {
+    throw new Error(`${rubricSchemaFile} must contain a JSON Schema object`);
+  }
+  const rubricStructured: StructuredCall = {
+    schema: rubricSchemaValue as StructuredOutputSchema,
+    schemaContent: rubricSchemaContent,
+  };
   const sample = opts.sample ?? 1;
   const startedAt = new Date();
   const runId = opts.runId ?? `${startedAt.toISOString().replace(/[:.]/g, "-")}-${sample}`;
@@ -383,42 +620,62 @@ export async function runJudge(
   const inferredGoal = blind.text.trim();
   if (!blindCall.fromCache) record(opts, backend, blindCall.key, blind);
 
-  // Pass 2 sees everything, including what pass 1 concluded. Judges occasionally
-  // emit a reply that will not parse — an unescaped quote inside a citation is
-  // the usual cause. One bad reply should not lose the run, so ask again; the
-  // retry count is recorded in provenance rather than swallowed, because how
-  // often a judge does this is a property worth knowing about the judge.
+  // Pass 2 sees everything, including what pass 1 concluded. Structured output
+  // makes malformed JSON a terminal backend failure rather than an invitation
+  // to sample a different substantive rating. The only retry is one live retry
+  // for an invalid evidence quote. Cached replies never fall through to live.
   const rubricAttachments = [
     { name: "SPEC", content: ev.spec },
     { name: "INFERRED_GOAL", content: inferredGoal },
     ...evidenceAttachments(ev),
   ];
-  const attempts = Math.max(1, (opts.parseRetries ?? 1) + 1);
   let rubric: JudgeResponse | undefined;
   let rubricKey: CacheKey | undefined;
   let rubricFromCache = false;
   let parsed: RubricPass | undefined;
-  let retries = 0;
-  const retryResponses: JudgeResponse[] = [];
-  let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const c = await call(backend, rubricPrompt, rubricAttachments, sample, opts);
+  let citationRetries = 0;
+  const discardedRubricResponses: JudgeResponse[] = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const c = await call(
+      backend,
+      rubricPrompt,
+      rubricAttachments,
+      sample,
+      opts,
+      rubricStructured,
+    );
+    // A parse error is terminal. Retrying would ask for a different rating,
+    // not repair the rating already returned.
+    const strictRubric = parseStructuredRubric(c.response.text, rubricStructured.schema);
+    const rawRubric = strictRubric.raw;
+    let candidate = strictRubric.pass;
     try {
-      parsed = verifyRubricCitations(parseRubricPass(c.response.text), rubricAttachments);
-      rubric = c.response;
-      rubricKey = c.key;
-      rubricFromCache = c.fromCache;
-      break;
+      candidate = verifyGamingEvidence(candidate, rubricAttachments);
     } catch (err) {
-      lastError = err;
-      retries++;
-      // A reply that will not parse is never recorded: the cache exists to
-      // replay working runs, not to make a broken one reproducible.
-      if (c.fromCache) throw err;
-      retryResponses.push(c.response);
+      if (c.fromCache || attempt === 1) throw err;
+      citationRetries++;
+      discardedRubricResponses.push(c.response);
+      continue;
     }
+    const citationFailures = rubricCitationFailures(
+      rawRubric,
+      candidate,
+      rubricAttachments,
+    );
+    if (citationFailures.length > 0 && !c.fromCache && attempt === 0) {
+      citationRetries++;
+      discardedRubricResponses.push(c.response);
+      continue;
+    }
+    parsed = verifyRubricCitations(candidate, rubricAttachments);
+    rubric = c.response;
+    rubricKey = c.key;
+    rubricFromCache = c.fromCache;
+    break;
   }
-  if (!parsed || !rubric || !rubricKey) throw lastError;
+  if (!parsed || !rubric || !rubricKey) {
+    throw new Error("rubric validation ended without an accepted response");
+  }
   if (!rubricFromCache) record(opts, backend, rubricKey, rubric);
   const finishedAt = new Date();
 
@@ -430,18 +687,19 @@ export async function runJudge(
   };
   const { verdict, overall } = computeVerdict(dims);
 
-  const fullyReplayed = blindCall.fromCache && rubricFromCache;
+  const fullyReplayed =
+    blindCall.fromCache && rubricFromCache && discardedRubricResponses.length === 0;
   const anyCached = blindCall.fromCache || rubricFromCache;
   // A full replay retains historical usage for evaluation reports. A mixed
   // run reports only work performed now; charging a cached pass again would
-  // overstate its cost and token use. Parse retries are always live because a
-  // malformed reply is never recorded.
+  // overstate its cost and token use. A discarded citation-invalid response is
+  // live work and remains in the usage receipt.
   const meteredResponses = fullyReplayed
     ? [blind, rubric]
     : [
         ...(blindCall.fromCache ? [] : [blind]),
         ...(rubricFromCache ? [] : [rubric]),
-        ...retryResponses,
+        ...discardedRubricResponses,
       ];
   const sumNullable = (
     responses: JudgeResponse[],
@@ -456,7 +714,7 @@ export async function runJudge(
   const tokensIn = sumNullable(meteredResponses, (response) => response.tokensIn);
   const tokensOut = sumNullable(meteredResponses, (response) => response.tokensOut);
 
-  const promptFiles = [blindPrompt, rubricPrompt].map((p) => ({
+  const promptFiles = [blindPrompt, rubricPrompt, rubricSchemaFile].map((p) => ({
     path: p.split("/").slice(-2).join("/"),
     sha256: sha256(readFileSync(p, "utf8")),
   }));
@@ -488,7 +746,18 @@ export async function runJudge(
       gonogo_version: GONOGO_VERSION,
       judge_backend: backend.name,
       model_version: rubric.model,
-      models_reported: [...new Set([...blind.models, ...rubric.models])].sort(),
+      models_reported: [
+        ...new Set([
+          blind.model,
+          ...blind.models,
+          ...discardedRubricResponses.flatMap((response) => [
+            response.model,
+            ...response.models,
+          ]),
+          rubric.model,
+          ...rubric.models,
+        ]),
+      ].sort(),
       prompt_files: promptFiles,
       started_at: startedAt.toISOString(),
       finished_at: finishedAt.toISOString(),
@@ -499,7 +768,8 @@ export async function runJudge(
       head: ev.head,
       spec_sha256: sha256(ev.spec),
       diff_sha256: sha256(ev.diff),
-      rubric_parse_retries: retries,
+      rubric_parse_retries: 0,
+      rubric_citation_retries: citationRetries,
       pass_sources: {
         blind: blindCall.fromCache ? "cache" : "live",
         rubric: rubricFromCache ? "cache" : "live",

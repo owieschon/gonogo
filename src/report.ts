@@ -246,6 +246,12 @@ ${
           String(p.rubric_parse_retries),
         )} rubric-pass repl${p.rubric_parse_retries === 1 ? "y" : "ies"} discarded as unparseable and re-asked</td></tr>`
       : ""
+  }${
+    p.rubric_citation_retries
+      ? `\n  <tr><th>citation retries</th><td class="mono">${esc(
+          String(p.rubric_citation_retries),
+        )} rubric-pass repl${p.rubric_citation_retries === 1 ? "y" : "ies"} discarded because an evidence quote failed validation</td></tr>`
+      : ""
   }
 </table>
 

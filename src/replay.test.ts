@@ -6,10 +6,14 @@ import { readCache, writeCache } from "./replay.ts";
 import type { CacheKey, CachePayload } from "./replay.ts";
 import { renderHtml } from "./report.ts";
 import { runJudge } from "./rubric.ts";
-import type { JudgeBackend, JudgeResponse } from "./judges/types.ts";
+import type { JudgeBackend, JudgeInvokeOptions, JudgeResponse } from "./judges/types.ts";
 import type { Evidence } from "./types.ts";
 
 const roots: string[] = [];
+const RUBRIC_SCHEMA_CONTENT = readFileSync(
+  join(import.meta.dir, "..", "prompts", "rubric-pass.schema.json"),
+  "utf8",
+);
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -122,13 +126,13 @@ describe("record-on-miss", () => {
       score: 4,
       requirements_total: 1,
       requirements_met: 1,
-      citations: ["implemented"],
+      citations: ["+implemented"],
       reasoning: "met",
     },
-    scope_discipline: { score: 4, citations: ["small diff"], reasoning: "focused" },
-    claim_verification: { score: 4, citations: ["tests pass"], reasoning: "verified" },
-    goal_alignment: { score: 4, citations: ["works"], reasoning: "aligned" },
-    spec_clarity: { score: 4, citations: ["specific"], reasoning: "clear" },
+    scope_discipline: { score: 4, citations: ["file | 1 +"], reasoning: "focused" },
+    claim_verification: { score: 4, citations: ["implemented"], reasoning: "verified" },
+    goal_alignment: { score: 4, citations: ["inferred goal"], reasoning: "aligned" },
+    spec_clarity: { score: 4, citations: ["Implement it."], reasoning: "clear" },
     judge_confidence: 1,
     summary: "go",
   });
@@ -137,10 +141,16 @@ describe("record-on-miss", () => {
     readonly name = "test-backend";
     readonly requestedModel = "test-model";
     calls = 0;
+    structuredCalls = 0;
 
-    async invoke(promptFile: string): Promise<JudgeResponse> {
+    async invoke(
+      promptFile: string,
+      _attachments: unknown[],
+      options?: JudgeInvokeOptions,
+    ): Promise<JudgeResponse> {
       this.calls++;
       const blind = promptFile.endsWith("blind-pass.md");
+      if (options?.structuredSchema) this.structuredCalls++;
       return {
         text: blind ? "inferred goal" : rubricReply,
         model: this.requestedModel,
@@ -176,10 +186,12 @@ describe("record-on-miss", () => {
     mkdirSync(prompts, { recursive: true });
     writeFileSync(join(prompts, "blind-pass.md"), "Infer the goal.");
     writeFileSync(join(prompts, "rubric-pass.md"), "Score the work.");
+    writeFileSync(join(prompts, "rubric-pass.schema.json"), RUBRIC_SCHEMA_CONTENT);
 
     const first = new CountingBackend();
     const live = await runJudge(evidence(), first, prompts, { recordDir: cache });
     expect(first.calls).toBe(2);
+    expect(first.structuredCalls).toBe(1);
     expect(live.verdictFile.provenance.pass_sources).toEqual({
       blind: "live",
       rubric: "live",
@@ -189,6 +201,10 @@ describe("record-on-miss", () => {
     expect(live.event.cost_usd).toBe(0.75);
     expect(live.event.tokens_in).toBe(30);
     expect(live.event.tokens_out).toBe(6);
+    expect(live.verdictFile.provenance.prompt_files.map((file) => file.path)).toContain(
+      "prompts/rubric-pass.schema.json",
+    );
+    expect(live.event.prompt_hashes["prompts/rubric-pass.schema.json"]).toBeDefined();
 
     const exactReplay = new CountingBackend();
     const fullCache = await runJudge(evidence(), exactReplay, prompts, { recordDir: cache });
@@ -263,6 +279,338 @@ describe("record-on-miss", () => {
   });
 });
 
+describe("rubric response validation", () => {
+  function evidence(): Evidence {
+    return {
+      repo: "/tmp/example",
+      base: "a".repeat(40),
+      head: "a".repeat(40),
+      diff: "+implemented",
+      diffStat: "file | 1 +",
+      changedFiles: ["file"],
+      commitMessages: "implemented",
+      spec: "Implement it.",
+      transcript: null,
+      test: null,
+      truncated: { diff: false, transcript: false },
+    };
+  }
+
+  function validRubric(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      drift_type: "none",
+      attempted_gaming: false,
+      gaming_evidence: [],
+      task_satisfaction: {
+        score: 4,
+        requirements_total: 1,
+        requirements_met: 1,
+        citations: ["+implemented"],
+        reasoning: "met",
+      },
+      scope_discipline: { score: 4, citations: ["file | 1 +"], reasoning: "focused" },
+      claim_verification: { score: 4, citations: ["implemented"], reasoning: "verified" },
+      goal_alignment: { score: 4, citations: ["inferred goal"], reasoning: "aligned" },
+      spec_clarity: { score: 4, citations: ["Implement it."], reasoning: "clear" },
+      judge_confidence: 1,
+      summary: "go",
+      ...extra,
+    };
+  }
+
+  function promptsAt(parent: string): string {
+    const prompts = join(parent, "prompts");
+    mkdirSync(prompts, { recursive: true });
+    writeFileSync(join(prompts, "blind-pass.md"), "Infer the goal.");
+    writeFileSync(join(prompts, "rubric-pass.md"), "Score the work.");
+    writeFileSync(join(prompts, "rubric-pass.schema.json"), RUBRIC_SCHEMA_CONTENT);
+    return prompts;
+  }
+
+  interface Reply {
+    text: string;
+    model: string;
+  }
+
+  class QueueBackend implements JudgeBackend {
+    readonly name = "queue-backend";
+    readonly requestedModel = "queue-model";
+    calls: { promptFile: string; structured: boolean }[] = [];
+
+    constructor(private readonly replies: Reply[]) {}
+
+    async invoke(
+      promptFile: string,
+      _attachments: unknown[],
+      options?: JudgeInvokeOptions,
+    ): Promise<JudgeResponse> {
+      this.calls.push({ promptFile, structured: options?.structuredSchema !== undefined });
+      const reply = this.replies.shift();
+      if (!reply) throw new Error("test backend ran out of replies");
+      return {
+        text: reply.text,
+        model: reply.model,
+        models: [reply.model],
+        costUsd: 0.1,
+        durationMs: 1,
+        tokensIn: 10,
+        tokensOut: 2,
+      };
+    }
+  }
+
+  const blindReply = (): Reply => ({ text: "inferred goal", model: "blind-model" });
+  const rubricReply = (value: Record<string, unknown>, model: string): Reply => ({
+    text: JSON.stringify(value),
+    model,
+  });
+
+  test("retries one live citation-invalid response and meters the discarded call", async () => {
+    const prompts = promptsAt(root());
+    const invalid = validRubric({
+      task_satisfaction: {
+        score: 4,
+        requirements_total: 1,
+        requirements_met: 1,
+        citations: ["invented citation"],
+        reasoning: "met",
+      },
+    });
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(invalid, "discarded-model"),
+      rubricReply(validRubric(), "accepted-model"),
+    ]);
+
+    const result = await runJudge(evidence(), backend, prompts);
+    expect(backend.calls).toHaveLength(3);
+    expect(backend.calls.map((call) => call.structured)).toEqual([false, true, true]);
+    expect(result.verdictFile.dimensions.task_satisfaction.score).toBe(4);
+    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(1);
+    expect(result.verdictFile.provenance.rubric_parse_retries).toBe(0);
+    expect(result.verdictFile.provenance.cost_usd).toBeCloseTo(0.3);
+    expect(result.event.tokens_in).toBe(30);
+    expect(result.event.tokens_out).toBe(6);
+    expect(result.verdictFile.provenance.models_reported).toEqual([
+      "accepted-model",
+      "blind-model",
+      "discarded-model",
+    ]);
+    expect(renderHtml(result.verdictFile)).toContain("citation retries");
+  });
+
+  test("a second citation-invalid live response becomes a safe abstention", async () => {
+    const prompts = promptsAt(root());
+    const invalid = (citation: string) =>
+      validRubric({
+        task_satisfaction: {
+          score: 4,
+          requirements_total: 1,
+          requirements_met: 1,
+          citations: [citation],
+          reasoning: "met",
+        },
+      });
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(invalid("invented one"), "rubric-1"),
+      rubricReply(invalid("invented two"), "rubric-2"),
+    ]);
+
+    const result = await runJudge(evidence(), backend, prompts);
+    expect(backend.calls).toHaveLength(3);
+    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(1);
+    expect(result.verdictFile.dimensions.task_satisfaction.score).toBe("abstain");
+    expect(result.verdictFile.verdict).toBe("inconclusive");
+  });
+
+  test("an explicit abstention is accepted without a retry", async () => {
+    const prompts = promptsAt(root());
+    const abstained = validRubric({
+      claim_verification: { score: "abstain", reason: "no claims to verify" },
+    });
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(abstained, "rubric-model"),
+    ]);
+
+    const result = await runJudge(evidence(), backend, prompts);
+    expect(backend.calls).toHaveLength(2);
+    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(0);
+    expect(result.verdictFile.dimensions.claim_verification.score).toBe("abstain");
+  });
+
+  test("a citation-invalid cached response abstains without falling through to live", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
+    const recorder = new QueueBackend([
+      blindReply(),
+      rubricReply(validRubric(), "rubric-model"),
+    ]);
+    await runJudge(evidence(), recorder, prompts, { recordDir: cache });
+    const receiptPath = filesBelow(cache).find((path) => {
+      const receipt = JSON.parse(readFileSync(path, "utf8"));
+      return receipt.text === JSON.stringify(validRubric());
+    });
+    expect(receiptPath).toBeDefined();
+    const receipt = JSON.parse(readFileSync(receiptPath!, "utf8"));
+    receipt.text = JSON.stringify(
+      validRubric({
+        task_satisfaction: {
+          score: 4,
+          requirements_total: 1,
+          requirements_met: 1,
+          citations: ["not in evidence"],
+          reasoning: "met",
+        },
+      }),
+    );
+    writeFileSync(receiptPath!, JSON.stringify(receipt));
+
+    const cached = new QueueBackend([]);
+    const result = await runJudge(evidence(), cached, prompts, { recordDir: cache });
+    expect(cached.calls).toHaveLength(0);
+    expect(result.verdictFile.dimensions.task_satisfaction.score).toBe("abstain");
+    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(0);
+    expect(result.verdictFile.provenance.pass_sources).toEqual({
+      blind: "cache",
+      rubric: "cache",
+    });
+  });
+
+  test("malformed rubric JSON fails without asking for another rating", async () => {
+    const prompts = promptsAt(root());
+    const backend = new QueueBackend([
+      blindReply(),
+      { text: '{"task_satisfaction":', model: "malformed-model" },
+      rubricReply(validRubric(), "must-not-be-called"),
+    ]);
+
+    await expect(runJudge(evidence(), backend, prompts, { parseRetries: 99 })).rejects.toThrow(
+      "judge did not return strict rubric JSON",
+    );
+    expect(backend.calls).toHaveLength(2);
+  });
+
+  test("prose-wrapped and raw-newline rubric JSON are terminal parse errors", async () => {
+    const valid = JSON.stringify(validRubric());
+    const malformedReplies = [
+      `Here is the result:\n${valid}`,
+      valid.replace('"summary":"go"', '"summary":"line one\nline two"'),
+    ];
+    for (const text of malformedReplies) {
+      const prompts = promptsAt(root());
+      const backend = new QueueBackend([
+        blindReply(),
+        { text, model: "malformed-model" },
+        rubricReply(validRubric(), "must-not-be-called"),
+      ]);
+      await expect(runJudge(evidence(), backend, prompts)).rejects.toThrow(
+        "judge did not return strict rubric JSON",
+      );
+      expect(backend.calls).toHaveLength(2);
+    }
+  });
+
+  test("a schema-invalid rubric response fails without a second rating", async () => {
+    const prompts = promptsAt(root());
+    const missingSummary = validRubric();
+    delete missingSummary.summary;
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(missingSummary, "invalid-model"),
+      rubricReply(validRubric(), "must-not-be-called"),
+    ]);
+
+    await expect(runJudge(evidence(), backend, prompts)).rejects.toThrow(
+      "schema-invalid rubric output",
+    );
+    expect(backend.calls).toHaveLength(2);
+  });
+
+  test("a schema-invalid cached response fails without live fallback", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
+    const recorder = new QueueBackend([
+      blindReply(),
+      rubricReply(validRubric(), "rubric-model"),
+    ]);
+    await runJudge(evidence(), recorder, prompts, { recordDir: cache });
+    const receiptPath = filesBelow(cache).find((path) => {
+      const receipt = JSON.parse(readFileSync(path, "utf8"));
+      return receipt.text === JSON.stringify(validRubric());
+    });
+    expect(receiptPath).toBeDefined();
+    const receipt = JSON.parse(readFileSync(receiptPath!, "utf8"));
+    const missingSummary = validRubric();
+    delete missingSummary.summary;
+    receipt.text = JSON.stringify(missingSummary);
+    writeFileSync(receiptPath!, JSON.stringify(receipt));
+
+    const cached = new QueueBackend([]);
+    await expect(runJudge(evidence(), cached, prompts, { recordDir: cache })).rejects.toThrow(
+      "schema-invalid rubric output",
+    );
+    expect(cached.calls).toHaveLength(0);
+  });
+
+  test("invalid gaming grounding gets one live retry", async () => {
+    const prompts = promptsAt(root());
+    const invalidGaming = validRubric({
+      attempted_gaming: true,
+      gaming_evidence: ["inferred goal"],
+    });
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(invalidGaming, "rubric-1"),
+      rubricReply(validRubric(), "rubric-2"),
+    ]);
+
+    const result = await runJudge(evidence(), backend, prompts);
+    expect(backend.calls).toHaveLength(3);
+    expect(result.verdictFile.provenance.rubric_citation_retries).toBe(1);
+    expect(result.verdictFile.attempted_gaming).toBe(false);
+  });
+
+  test("a second invalid gaming response fails closed", async () => {
+    const prompts = promptsAt(root());
+    const invalidGaming = validRubric({
+      attempted_gaming: true,
+      gaming_evidence: ["inferred goal"],
+    });
+    const backend = new QueueBackend([
+      blindReply(),
+      rubricReply(invalidGaming, "rubric-1"),
+      rubricReply(invalidGaming, "rubric-2"),
+    ]);
+
+    await expect(runJudge(evidence(), backend, prompts)).rejects.toThrow(
+      "not grounded in DIFF, COMMIT_MESSAGES or TRANSCRIPT",
+    );
+    expect(backend.calls).toHaveLength(3);
+  });
+
+  test("schema content participates in replay identity", async () => {
+    const dir = root();
+    const prompts = promptsAt(dir);
+    const cache = join(dir, "cache");
+    const recorder = new QueueBackend([
+      blindReply(),
+      rubricReply(validRubric(), "rubric-model"),
+    ]);
+    await runJudge(evidence(), recorder, prompts, { recordDir: cache });
+    writeFileSync(join(prompts, "rubric-pass.schema.json"), `${RUBRIC_SCHEMA_CONTENT}\n`);
+
+    const replay = new QueueBackend([]);
+    await expect(runJudge(evidence(), replay, prompts, { replayDir: cache })).rejects.toThrow(
+      "no recorded judge output",
+    );
+    expect(replay.calls).toHaveLength(0);
+  });
+});
+
 describe("legacy committed replay compatibility", () => {
   test("reads the validated v1 Claude raw receipt for the 0.1.0 and 0.1.1 parsers", () => {
     const dir = root();
@@ -285,6 +633,7 @@ describe("legacy committed replay compatibility", () => {
 
     expect(readCache(dir, k)?.text).toBe("verdict");
     expect(readCache(dir, { ...k, instrumentVersion: "0.1.1" })?.text).toBe("verdict");
+    expect(readCache(dir, { ...k, instrumentVersion: "0.1.2" })).toBeNull();
     expect(readCache(dir, { ...k, backend: "codex-cli" })).toBeNull();
     expect(readCache(dir, { ...k, instrumentVersion: "0.2.0" })).toBeNull();
   });

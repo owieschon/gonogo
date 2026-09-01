@@ -74,6 +74,8 @@ export interface Provenance {
   diff_sha256: string;
   /** Rubric-pass replies discarded because they would not parse. Usually 0. */
   rubric_parse_retries?: number;
+  /** Live rubric replies discarded once because an evidence quote was invalid. */
+  rubric_citation_retries?: number;
   /** Source of each pass. Optional only for verdicts written before this field existed. */
   pass_sources?: { blind: JudgePassSource; rubric: JudgePassSource };
   /** True when any pass came from cache, so this run is excluded from calibration. */
