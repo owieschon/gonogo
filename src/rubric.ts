@@ -2,8 +2,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DIMENSIONS } from "./types.ts";
+import { CITATION_REPAIR_DIMENSIONS, DIMENSIONS } from "./types.ts";
 import type {
+  CitationRepairDimension,
   Dimension,
   DimensionResult,
   Evidence,
@@ -336,7 +337,16 @@ function parseRubricObject(raw: any): RubricPass {
   };
 }
 
-const RUBRIC_RESULT_NAMES = [...DIMENSIONS, "spec_clarity"] as const;
+const RUBRIC_RESULT_NAMES = CITATION_REPAIR_DIMENSIONS;
+type RubricResultName = CitationRepairDimension;
+
+type CitationRepairEntry =
+  | { dimension: RubricResultName; status: "repaired"; citations: string[] }
+  | { dimension: RubricResultName; status: "unrepairable"; reason: string };
+
+interface CitationRepairOutput {
+  repairs: CitationRepairEntry[];
+}
 
 function citationOccursInOneBlock(citation: string, attachments: Attachment[]): boolean {
   return (
@@ -388,8 +398,8 @@ function rubricCitationFailures(
   raw: any,
   pass: RubricPass,
   attachments: Attachment[],
-): string[] {
-  const failures: string[] = [];
+): RubricResultName[] {
+  const failures: RubricResultName[] = [];
   for (const name of RUBRIC_RESULT_NAMES) {
     const rawResult = raw?.[name];
     if (rawResult?.score === "abstain" || rawResult?.abstain === true) continue;
@@ -408,6 +418,116 @@ function rubricCitationFailures(
     }
   }
   return failures;
+}
+
+function parseStructuredCitationRepair(
+  text: string,
+  schema: StructuredOutputSchema,
+): CitationRepairOutput {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `judge did not return strict citation-repair JSON. First 800 chars:\n${text.slice(0, 800)}`,
+    );
+  }
+  const errors = schemaErrors(raw, schema, schema);
+  if (errors.length > 0) {
+    throw new Error(
+      `judge returned schema-invalid citation-repair output: ${errors.slice(0, 5).join("; ")}`,
+    );
+  }
+  return raw as CitationRepairOutput;
+}
+
+function citationAbstention(
+  name: RubricResultName,
+  original: DimensionResult,
+  reason: string,
+): DimensionResult {
+  return {
+    score: "abstain",
+    reason: `citation repair for ${name} failed: ${reason}`,
+    citations: original.citations,
+  };
+}
+
+function abstainCitationFailures(
+  pass: RubricPass,
+  failures: RubricResultName[],
+  reason: string,
+): RubricPass {
+  const next: RubricPass = { ...pass };
+  for (const name of failures) next[name] = citationAbstention(name, pass[name], reason);
+  return next;
+}
+
+/**
+ * Apply a citation-only response to the frozen rubric pass. The response must
+ * cover exactly the requested dimensions. Successful entries replace only the
+ * citation array; a refusal or another ungrounded quote safely abstains.
+ */
+function applyCitationRepair(
+  pass: RubricPass,
+  failures: RubricResultName[],
+  output: CitationRepairOutput,
+  originalEvidence: Attachment[],
+): {
+  pass: RubricPass;
+  repaired: RubricResultName[];
+  abstained: RubricResultName[];
+} {
+  const expected = new Set<RubricResultName>(failures);
+  const byDimension = new Map<RubricResultName, CitationRepairEntry>();
+  for (const entry of output.repairs) {
+    if (byDimension.has(entry.dimension)) {
+      throw new Error(`citation repair duplicated dimension ${entry.dimension}`);
+    }
+    if (!expected.has(entry.dimension)) {
+      throw new Error(`citation repair returned unrequested dimension ${entry.dimension}`);
+    }
+    byDimension.set(entry.dimension, entry);
+  }
+  const missing = failures.filter((name) => !byDimension.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `citation repair omitted requested dimension${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
+    );
+  }
+
+  const repaired: RubricResultName[] = [];
+  const abstained: RubricResultName[] = [];
+  const next: RubricPass = { ...pass };
+  for (const name of failures) {
+    const original = pass[name];
+    const entry = byDimension.get(name)!;
+    if (entry.status === "unrepairable") {
+      next[name] = citationAbstention(name, original, entry.reason);
+      abstained.push(name);
+      continue;
+    }
+
+    const sources = citationSourcesFor(name, originalEvidence);
+    const invalid = entry.citations.filter(
+      (citation) => !citationOccursInOneBlock(citation, sources),
+    );
+    if (invalid.length > 0 || isAbstain(original)) {
+      next[name] = citationAbstention(
+        name,
+        original,
+        invalid.length > 0
+          ? `${invalid.length} returned citation${invalid.length === 1 ? " is" : "s are"} not a nonblank, single-line exact substring of one original evidence block`
+          : "the frozen result is not a scored dimension",
+      );
+      abstained.push(name);
+      continue;
+    }
+
+    next[name] = { ...original, citations: [...entry.citations] };
+    repaired.push(name);
+  }
+  return { pass: next, repaired, abstained };
 }
 
 const GAMING_SOURCE_NAMES = new Set(["DIFF", "COMMIT_MESSAGES", "TRANSCRIPT"]);
@@ -458,7 +578,7 @@ function evidenceAttachments(ev: Evidence): Attachment[] {
 
 export interface JudgeRunResult {
   verdictFile: VerdictFile;
-  raw: { blind: string; rubric: string };
+  raw: { blind: string; rubric: string; citation_repair?: string };
   event: JudgeEvent;
 }
 
@@ -594,6 +714,8 @@ export async function runJudge(
   const blindPrompt = join(promptsDir, "blind-pass.md");
   const rubricPrompt = join(promptsDir, "rubric-pass.md");
   const rubricSchemaFile = join(promptsDir, "rubric-pass.schema.json");
+  const citationRepairPrompt = join(promptsDir, "citation-repair.md");
+  const citationRepairSchemaFile = join(promptsDir, "citation-repair.schema.json");
   const rubricSchemaContent = readFileSync(rubricSchemaFile, "utf8");
   const rubricSchemaValue: unknown = JSON.parse(rubricSchemaContent);
   if (
@@ -606,6 +728,19 @@ export async function runJudge(
   const rubricStructured: StructuredCall = {
     schema: rubricSchemaValue as StructuredOutputSchema,
     schemaContent: rubricSchemaContent,
+  };
+  const citationRepairSchemaContent = readFileSync(citationRepairSchemaFile, "utf8");
+  const citationRepairSchemaValue: unknown = JSON.parse(citationRepairSchemaContent);
+  if (
+    citationRepairSchemaValue === null ||
+    typeof citationRepairSchemaValue !== "object" ||
+    Array.isArray(citationRepairSchemaValue)
+  ) {
+    throw new Error(`${citationRepairSchemaFile} must contain a JSON Schema object`);
+  }
+  const citationRepairStructured: StructuredCall = {
+    schema: citationRepairSchemaValue as StructuredOutputSchema,
+    schemaContent: citationRepairSchemaContent,
   };
   const sample = opts.sample ?? 1;
   const startedAt = new Date();
@@ -620,63 +755,82 @@ export async function runJudge(
   const inferredGoal = blind.text.trim();
   if (!blindCall.fromCache) record(opts, backend, blindCall.key, blind);
 
-  // Pass 2 sees everything, including what pass 1 concluded. Structured output
-  // makes malformed JSON a terminal backend failure rather than an invitation
-  // to sample a different substantive rating. The only retry is one live retry
-  // for an invalid evidence quote. Cached replies never fall through to live.
+  // Pass 2 sees everything, including what pass 1 concluded. The first
+  // schema-valid response is the frozen substantive rating. Citation repair is
+  // a separate structured call that can replace citation arrays only.
   const rubricAttachments = [
     { name: "SPEC", content: ev.spec },
     { name: "INFERRED_GOAL", content: inferredGoal },
     ...evidenceAttachments(ev),
   ];
-  let rubric: JudgeResponse | undefined;
-  let rubricKey: CacheKey | undefined;
-  let rubricFromCache = false;
-  let parsed: RubricPass | undefined;
-  let citationRetries = 0;
-  const discardedRubricResponses: JudgeResponse[] = [];
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const c = await call(
+  const rubricCall = await call(
+    backend,
+    rubricPrompt,
+    rubricAttachments,
+    sample,
+    opts,
+    rubricStructured,
+  );
+  const rubric = rubricCall.response;
+  const strictRubric = parseStructuredRubric(rubric.text, rubricStructured.schema);
+  // Persist the frozen rating before any semantic validation. A gaming or
+  // citation failure must never cause a second substantive rating.
+  if (!rubricCall.fromCache) record(opts, backend, rubricCall.key, rubric);
+
+  let parsed = verifyGamingEvidence(strictRubric.pass, rubricAttachments);
+  const citationFailures = rubricCitationFailures(
+    strictRubric.raw,
+    parsed,
+    rubricAttachments,
+  );
+  let citationRepairCall: CachedCall | undefined;
+  let repairedDimensions: RubricResultName[] = [];
+  let repairAbstentions: RubricResultName[] = [];
+  if (citationFailures.length > 0) {
+    const citationFailureList = JSON.stringify({ dimensions: citationFailures }, null, 2);
+    const citationRepairAttachments: Attachment[] = [
+      { name: "FROZEN_RUBRIC_JSON", content: rubric.text, lang: "json" },
+      { name: "CITATION_FAILURES", content: citationFailureList, lang: "json" },
+      ...rubricAttachments,
+    ];
+    citationRepairCall = await call(
       backend,
-      rubricPrompt,
-      rubricAttachments,
+      citationRepairPrompt,
+      citationRepairAttachments,
       sample,
       opts,
-      rubricStructured,
+      citationRepairStructured,
     );
-    // A parse error is terminal. Retrying would ask for a different rating,
-    // not repair the rating already returned.
-    const strictRubric = parseStructuredRubric(c.response.text, rubricStructured.schema);
-    const rawRubric = strictRubric.raw;
-    let candidate = strictRubric.pass;
+    const repairOutput = parseStructuredCitationRepair(
+      citationRepairCall.response.text,
+      citationRepairStructured.schema,
+    );
+    // A schema-valid repair gets its own immutable receipt even when its exact
+    // dimension set or evidence grounding later fails closed.
+    if (!citationRepairCall.fromCache) {
+      record(opts, backend, citationRepairCall.key, citationRepairCall.response);
+    }
     try {
-      candidate = verifyGamingEvidence(candidate, rubricAttachments);
-    } catch (err) {
-      if (c.fromCache || attempt === 1) throw err;
-      citationRetries++;
-      discardedRubricResponses.push(c.response);
-      continue;
+      const applied = applyCitationRepair(
+        parsed,
+        citationFailures,
+        repairOutput,
+        rubricAttachments,
+      );
+      parsed = applied.pass;
+      repairedDimensions = applied.repaired;
+      repairAbstentions = applied.abstained;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      parsed = abstainCitationFailures(
+        parsed,
+        citationFailures,
+        `structurally invalid repair output (${reason})`,
+      );
+      repairAbstentions = [...citationFailures];
     }
-    const citationFailures = rubricCitationFailures(
-      rawRubric,
-      candidate,
-      rubricAttachments,
-    );
-    if (citationFailures.length > 0 && !c.fromCache && attempt === 0) {
-      citationRetries++;
-      discardedRubricResponses.push(c.response);
-      continue;
-    }
-    parsed = verifyRubricCitations(candidate, rubricAttachments);
-    rubric = c.response;
-    rubricKey = c.key;
-    rubricFromCache = c.fromCache;
-    break;
   }
-  if (!parsed || !rubric || !rubricKey) {
-    throw new Error("rubric validation ended without an accepted response");
-  }
-  if (!rubricFromCache) record(opts, backend, rubricKey, rubric);
+  parsed = verifyRubricCitations(parsed, rubricAttachments);
   const finishedAt = new Date();
 
   const dims: Record<Dimension, DimensionResult> = {
@@ -687,20 +841,15 @@ export async function runJudge(
   };
   const { verdict, overall } = computeVerdict(dims);
 
-  const fullyReplayed =
-    blindCall.fromCache && rubricFromCache && discardedRubricResponses.length === 0;
-  const anyCached = blindCall.fromCache || rubricFromCache;
+  const performedCalls = [blindCall, rubricCall, ...(citationRepairCall ? [citationRepairCall] : [])];
+  const fullyReplayed = performedCalls.every((item) => item.fromCache);
+  const anyCached = performedCalls.some((item) => item.fromCache);
   // A full replay retains historical usage for evaluation reports. A mixed
   // run reports only work performed now; charging a cached pass again would
-  // overstate its cost and token use. A discarded citation-invalid response is
-  // live work and remains in the usage receipt.
+  // overstate its cost and token use.
   const meteredResponses = fullyReplayed
-    ? [blind, rubric]
-    : [
-        ...(blindCall.fromCache ? [] : [blind]),
-        ...(rubricFromCache ? [] : [rubric]),
-        ...discardedRubricResponses,
-      ];
+    ? performedCalls.map((item) => item.response)
+    : performedCalls.filter((item) => !item.fromCache).map((item) => item.response);
   const sumNullable = (
     responses: JudgeResponse[],
     value: (response: JudgeResponse) => number | null,
@@ -714,7 +863,13 @@ export async function runJudge(
   const tokensIn = sumNullable(meteredResponses, (response) => response.tokensIn);
   const tokensOut = sumNullable(meteredResponses, (response) => response.tokensOut);
 
-  const promptFiles = [blindPrompt, rubricPrompt, rubricSchemaFile].map((p) => ({
+  const promptFiles = [
+    blindPrompt,
+    rubricPrompt,
+    rubricSchemaFile,
+    citationRepairPrompt,
+    citationRepairSchemaFile,
+  ].map((p) => ({
     path: p.split("/").slice(-2).join("/"),
     sha256: sha256(readFileSync(p, "utf8")),
   }));
@@ -750,12 +905,14 @@ export async function runJudge(
         ...new Set([
           blind.model,
           ...blind.models,
-          ...discardedRubricResponses.flatMap((response) => [
-            response.model,
-            ...response.models,
-          ]),
           rubric.model,
           ...rubric.models,
+          ...(citationRepairCall
+            ? [
+                citationRepairCall.response.model,
+                ...citationRepairCall.response.models,
+              ]
+            : []),
         ]),
       ].sort(),
       prompt_files: promptFiles,
@@ -769,10 +926,19 @@ export async function runJudge(
       spec_sha256: sha256(ev.spec),
       diff_sha256: sha256(ev.diff),
       rubric_parse_retries: 0,
-      rubric_citation_retries: citationRetries,
+      citation_repair: citationRepairCall
+        ? {
+            source: citationRepairCall.fromCache ? "cache" : "live",
+            prompt_sha256: citationRepairCall.key.promptHash,
+            evidence_sha256: citationRepairCall.key.evidenceHash,
+            requested_dimensions: citationFailures,
+            repaired_dimensions: repairedDimensions,
+            abstained_dimensions: repairAbstentions,
+          }
+        : null,
       pass_sources: {
         blind: blindCall.fromCache ? "cache" : "live",
-        rubric: rubricFromCache ? "cache" : "live",
+        rubric: rubricCall.fromCache ? "cache" : "live",
       },
       replayed: anyCached,
     },
@@ -791,7 +957,7 @@ export async function runJudge(
     backend: backend.name,
     model_version: rubric.model,
     prompt_hashes: Object.fromEntries(promptFiles.map((f) => [f.path, f.sha256])),
-    evidence_hash: rubricKey.evidenceHash,
+    evidence_hash: rubricCall.key.evidenceHash,
     rater_id: `judge:${backend.name}`,
     scores: scoresOf(dims),
     spec_clarity: parsed.spec_clarity.score === "abstain" ? "abstain" : (parsed.spec_clarity.score as number),
@@ -805,9 +971,18 @@ export async function runJudge(
     tokens_in: tokensIn,
     tokens_out: tokensOut,
     cost_usd: cost,
+    citation_repair: verdictFile.provenance.citation_repair,
     replay: anyCached,
   };
   if (opts.eventsPath) appendEvent(opts.eventsPath, event);
 
-  return { verdictFile, raw: { blind: blind.text, rubric: rubric.text }, event };
+  return {
+    verdictFile,
+    raw: {
+      blind: blind.text,
+      rubric: rubric.text,
+      ...(citationRepairCall ? { citation_repair: citationRepairCall.response.text } : {}),
+    },
+    event,
+  };
 }

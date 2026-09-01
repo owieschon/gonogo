@@ -106,6 +106,34 @@ function writeEvents(path: string, events: Record<string, unknown>[]): void {
   writeFileSync(path, events.map((event) => JSON.stringify(event)).join("\n") + "\n");
 }
 
+const REPAIR_PROMPT_HASHES = {
+  "prompts/blind-pass.md": "1".repeat(64),
+  "prompts/rubric-pass.md": "2".repeat(64),
+  "prompts/rubric-pass.schema.json": "3".repeat(64),
+  "prompts/citation-repair.md": "4".repeat(64),
+  "prompts/citation-repair.schema.json": "5".repeat(64),
+};
+
+function v3Judge(runId: string, repair: Record<string, unknown> | null): Record<string, unknown> {
+  return {
+    ...judge(runId, "unused"),
+    schema_version: 3,
+    prompt_hashes: { ...REPAIR_PROMPT_HASHES },
+    citation_repair: repair,
+  };
+}
+
+function repair(source: "live" | "cache" = "live"): Record<string, unknown> {
+  return {
+    source,
+    prompt_sha256: "a".repeat(64),
+    evidence_sha256: "b".repeat(64),
+    requested_dimensions: ["task_satisfaction"],
+    repaired_dimensions: ["task_satisfaction"],
+    abstained_dimensions: [],
+  };
+}
+
 test("discovers a legacy directory pair and reports its instrument", () => {
   inTemp((dir) => {
     const runs = join(dir, "runs");
@@ -241,6 +269,42 @@ test("partitions the same rater pair by prompt, model, and backend identity", ()
     expect(output).toContain("backend=claude-api; model=claude-sonnet-5");
     expect(output).toContain("backend=claude-cli; model=claude-sonnet-6");
     expect(output).not.toContain("(4 runs)");
+  });
+});
+
+test("keeps live repair and no-repair runs in one instrument identity", () => {
+  inTemp((dir) => {
+    const eventsPath = join(dir, "events.jsonl");
+    writeEvents(eventsPath, [
+      v3Judge("no-repair", null),
+      rater("no-repair"),
+      v3Judge("live-repair", repair()),
+      rater("live-repair"),
+    ]);
+
+    const output = runCalibrate({ eventsPath, dirs: [] });
+
+    expect(output.match(/^instrument: /gm)).toHaveLength(1);
+    expect(output).toContain("rater pair: judge:claude-cli vs human:owen   (2 runs)");
+    expect(output).toContain("prompts/citation-repair.md=" + "4".repeat(64));
+    expect(output).toContain("prompts/citation-repair.schema.json=" + "5".repeat(64));
+  });
+});
+
+test("excludes cached and mixed repair runs through the replay boundary", () => {
+  inTemp((dir) => {
+    const eventsPath = join(dir, "events.jsonl");
+    const cached = v3Judge("cached-repair", repair("cache"));
+    cached.replay = true;
+    const mixed = v3Judge("mixed-repair", repair("live"));
+    mixed.replay = true;
+    writeEvents(eventsPath, [cached, rater("cached-repair"), mixed, rater("mixed-repair")]);
+
+    const output = runCalibrate({ eventsPath, dirs: [] });
+
+    expect(output).toContain("No double-scored runs found.");
+    expect(output).toContain("2 run(s) carry exactly one rating");
+    expect(output).not.toContain("comparison(s)");
   });
 });
 

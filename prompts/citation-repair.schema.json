@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "dimension": {
+      "type": "string",
+      "enum": [
+        "task_satisfaction",
+        "scope_discipline",
+        "claim_verification",
+        "goal_alignment",
+        "spec_clarity"
+      ]
+    },
+    "repaired": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dimension": { "$ref": "#/$defs/dimension" },
+        "status": { "type": "string", "const": "repaired" },
+        "citations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^(?=.*\\S)[^\\r\\n]+$"
+          }
+        }
+      },
+      "required": ["dimension", "status", "citations"]
+    },
+    "unrepairable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dimension": { "$ref": "#/$defs/dimension" },
+        "status": { "type": "string", "const": "unrepairable" },
+        "reason": { "type": "string", "pattern": "\\S" }
+      },
+      "required": ["dimension", "status", "reason"]
+    },
+    "entry": {
+      "oneOf": [
+        { "$ref": "#/$defs/repaired" },
+        { "$ref": "#/$defs/unrepairable" }
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repairs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "required": ["repairs"]
+}

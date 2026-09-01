@@ -42,18 +42,47 @@ function scoreColor(d: DimensionResult): string {
 function sourceLabel(p: VerdictFile["provenance"]): string {
   const sources = p.pass_sources;
   if (!sources) {
-    return p.replayed
-      ? "replayed from the record/replay cache; no judge was invoked"
-      : "blind pass: live judge; rubric pass: live judge";
+    if (p.replayed && p.citation_repair?.source === "live") {
+      return "partial cache — legacy blind/rubric source unavailable; citation repair: live judge";
+    }
+    if (p.replayed) {
+      return p.citation_repair
+        ? "replayed from the record/replay cache; citation repair: cache — no judge was invoked"
+        : "replayed from the record/replay cache; no judge was invoked";
+    }
+    return "blind pass: live judge; rubric pass: live judge" +
+      (p.citation_repair ? "; citation repair: live judge" : "");
   }
-  if (sources.blind === "cache" && sources.rubric === "cache") {
-    return "blind pass: cache; rubric pass: cache — no judge was invoked";
+  const callSources = [
+    sources.blind,
+    sources.rubric,
+    ...(p.citation_repair ? [p.citation_repair.source] : []),
+  ];
+  const details = `blind pass: ${sources.blind === "cache" ? "cache" : "live judge"}; ` +
+    `rubric pass: ${sources.rubric === "cache" ? "cache" : "live judge"}` +
+    (p.citation_repair
+      ? `; citation repair: ${p.citation_repair.source === "cache" ? "cache" : "live judge"}`
+      : "");
+  if (callSources.every((source) => source === "cache")) {
+    return `${details} — no judge was invoked`;
   }
-  if (sources.blind === "live" && sources.rubric === "live") {
-    return "blind pass: live judge; rubric pass: live judge";
-  }
-  return `partial cache — blind pass: ${sources.blind === "cache" ? "cache" : "live judge"}; ` +
-    `rubric pass: ${sources.rubric === "cache" ? "cache" : "live judge"}`;
+  if (callSources.every((source) => source === "live")) return details;
+  return `partial cache — ${details}`;
+}
+
+function citationRepairRow(p: VerdictFile["provenance"]): string {
+  const repair = p.citation_repair;
+  if (!repair) return "";
+  const requested = repair.requested_dimensions.join(", ");
+  const repaired = repair.repaired_dimensions.join(", ") || "none";
+  const abstained = repair.abstained_dimensions.join(", ") || "none";
+  return `\n  <tr><th>citation repair</th><td><span class="mono">${esc(repair.source)}</span> citation-only pass; ` +
+    `the original scores were frozen. Requested: <span class="mono">${esc(requested)}</span>; ` +
+    `repaired: <span class="mono">${esc(repaired)}</span>; safe abstentions: ` +
+    `<span class="mono">${esc(abstained)}</span>.<br>` +
+    `<span class="mono">prompt ${esc(repair.prompt_sha256.slice(0, 16))} · evidence ${esc(
+      repair.evidence_sha256.slice(0, 16),
+    )}</span></td></tr>`;
 }
 
 function dimensionBlock(name: string, d: DimensionResult, blurb: string): string {
@@ -246,11 +275,11 @@ ${
           String(p.rubric_parse_retries),
         )} rubric-pass repl${p.rubric_parse_retries === 1 ? "y" : "ies"} discarded as unparseable and re-asked</td></tr>`
       : ""
-  }${
-    p.rubric_citation_retries
-      ? `\n  <tr><th>citation retries</th><td class="mono">${esc(
+  }${citationRepairRow(p)}${
+    !p.citation_repair && p.rubric_citation_retries
+      ? `\n  <tr><th>historical citation rerates</th><td>${esc(
           String(p.rubric_citation_retries),
-        )} rubric-pass repl${p.rubric_citation_retries === 1 ? "y" : "ies"} discarded because an evidence quote failed validation</td></tr>`
+        )} whole-rubric response${p.rubric_citation_retries === 1 ? " was" : "s were"} discarded and re-asked by a pre-repair run; scores were not frozen</td></tr>`
       : ""
   }
 </table>
