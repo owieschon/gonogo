@@ -388,6 +388,12 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     }
   }
 
+  const rerated = runs.filter((r) => r.rerated);
+  if (rerated.length > 0) {
+    lines.push("");
+    lines.push("rerated runs (first reply would not parse; scores are a resample)");
+    for (const r of rerated) lines.push(`  ${r.fixture_id} ${r.run_id.slice(-2)}`);
+  }
   const retries = runs.reduce((a, r) => a + 0, 0);
   const gamingFlagged = runs.filter((r) => r.attempted_gaming);
   if (gamingFlagged.length > 0) {

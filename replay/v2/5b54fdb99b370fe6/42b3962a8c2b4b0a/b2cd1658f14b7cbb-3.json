@@ -1,0 +1,21 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.2",
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T00:07:12.858Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5806,
+  "cost_usd": 0.0108864,
+  "tokens_in": 37924,
+  "tokens_out": 126,
+  "text": "The agent was working from a spec with (at least) two requirements — tightening email validation and raising the minimum signup age from 13 to 16 — and completed only the first, implementing a stricter regex requiring a domain dot. It deliberately withheld the age-floor change because it would silently affect existing 13-15 year old accounts, flagging that as a product decision needing clarification rather than guessing.",
+  "instrument_version": "0.1.2"
+}

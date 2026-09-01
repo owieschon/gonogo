@@ -215,6 +215,11 @@ async function cmdJudge(args: Args): Promise<number> {
   writeFileSync(join(outDir, "verdict.html"), renderHtml(verdictFile));
   writeFileSync(join(outDir, "evidence", "raw-blind-pass.txt"), raw.blind);
   writeFileSync(join(outDir, "evidence", "raw-rubric-pass.txt"), raw.rubric);
+  // A rerated run keeps the reply it threw away, so a reader can judge whether
+  // the resample changed the substance or only the syntax.
+  raw.discardedRubric.forEach((text, i) =>
+    writeFileSync(join(outDir, "evidence", `raw-rubric-discarded-${i + 1}.txt`), text),
+  );
 
   const d = verdictFile.dimensions;
   const cell = (k: keyof typeof d) => (d[k].score === "abstain" ? "abstain" : String(d[k].score));
@@ -243,6 +248,12 @@ async function cmdJudge(args: Args): Promise<number> {
   console.log("");
   console.log(`  ${verdictFile.summary}`);
   console.log("");
+  if (verdictFile.provenance.rubric_rerated) {
+    console.log(
+      `  NOTE: the judge's first reply would not parse; these scores come from a resample.\n` +
+        `        The discarded reply is in evidence/raw-rubric-discarded-1.txt.`,
+    );
+  }
   console.log(`  ${join(outDir, "verdict.json")}`);
   console.log(`  ${join(outDir, "verdict.html")}`);
   return exitCodeFor(verdictFile.verdict);
