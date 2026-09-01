@@ -116,11 +116,12 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   citation arrays or declare them unrepairable; its static prompt, schema and
   response have their own immutable receipt. A failed repair becomes a safe
   abstention without changing any score, reasoning or verdict metadata. Invalid
-  gaming evidence fails immediately because repairing it would change a
-  substantive finding. Cached responses never fall through to a live call. The
-  schemas omit `$schema`: Claude Code 2.1.238 rejects the Draft 2020-12
-  meta-schema URI before inference even though it accepts the same object
-  schemas without that annotation.
+  gaming evidence fails immediately because asking the judge to repair it would
+  change a substantive finding; the deterministic transcript-byte recovery
+  below is the only representation-only exception. Cached responses never fall
+  through to a live call. The schemas omit `$schema`: Claude Code 2.1.238
+  rejects the Draft 2020-12 meta-schema URI before inference even though it
+  accepts the same object schemas without that annotation.
 - **Replayed and mixed-source runs are excluded from calibration.** Serving a
   cached pass twice is not a second observation, and counting it would inflate
   agreement. A mixed record-on-miss run reports only the live pass's current
@@ -137,6 +138,13 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   quote still raises the finding when the judge forgets the boolean. False
   completion claims and "ready to merge" belong to claim verification, not to
   this flag.
+- **One transcript continuation can be recovered without asking the judge
+  again.** The retained 0.1.4 response joined one `\n  ` hard wrap in each of
+  two otherwise exact gaming quotes. Version 0.1.5 maps one ASCII space back to
+  that exact boundary only when the complete TRANSCRIPT has one candidate; it
+  preserves the original finding and evidence cardinality. DIFF and
+  COMMIT_MESSAGES joins, broader whitespace normalization, ambiguity, and a
+  second boundary remain terminal errors.
 - **I2 is a compile error, not a convention.** `blindAttachments` takes a
   branded `BlindPacket`. Without the brand, `Evidence` would satisfy the shape
   structurally — it also has `diff` and `transcript` — and the invariant would
@@ -155,7 +163,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   caller can tell "the work is bad" from "the judge could not tell" from "the
   tool broke". No `--gate` flag: the exit code is the whole surface.
 - **Eval floors are a fail-closed, versioned fixture policy.**
-  `fixtures/thresholds.json` names the 0.1.4 instrument and every metric; a
+  `fixtures/thresholds.json` names the 0.1.5 instrument and every metric; a
   missing, partial, out-of-range or wrong-version policy is a tool error rather
   than an implicit pass. The current 100/95/100/90 dimension, 90 verdict and
   100 drift floors are the receipt from EVAL_LOG iteration 9.
