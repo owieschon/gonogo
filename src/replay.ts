@@ -79,7 +79,7 @@ export interface CacheEntry {
   cost_usd: number | null;
   tokens_in: number | null;
   tokens_out: number | null;
-  /** The judge's reply, verbatim. Never reformatted. */
+  /** Provider text, or the backend's normalized structured output, retained without later scoring edits. */
   text: string;
 }
 

@@ -10,7 +10,7 @@ export interface Attachment {
 }
 
 export interface JudgeResponse {
-  /** The model's reply, verbatim. */
+  /** Provider text, or JSON serialized from schema-constrained structured output. */
   text: string;
   /** Model version string exactly as the backend reported it. */
   model: string;
@@ -23,6 +23,13 @@ export interface JudgeResponse {
   tokensOut: number | null;
 }
 
+export type StructuredOutputSchema = Readonly<Record<string, unknown>>;
+
+export interface JudgeInvokeOptions {
+  /** JSON Schema enforced by a backend that supports structured output. */
+  structuredSchema?: StructuredOutputSchema;
+}
+
 export interface JudgeBackend {
   readonly name: string;
   /** Model selected before invocation, when the backend permits that choice. */
@@ -30,7 +37,11 @@ export interface JudgeBackend {
   /** Delimiter token for evidence blocks; the pipeline sets it per call. */
   delimiterToken?: string;
   /** Render promptFile + attachments into one prompt and return the reply. */
-  invoke(promptFile: string, attachments: Attachment[]): Promise<JudgeResponse>;
+  invoke(
+    promptFile: string,
+    attachments: Attachment[],
+    options?: JudgeInvokeOptions,
+  ): Promise<JudgeResponse>;
 }
 
 /**
