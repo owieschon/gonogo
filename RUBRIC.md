@@ -29,6 +29,14 @@ type, or gaming finding. The original rubric receipt is never overwritten; the
 repair prompt, schema, response, cost, tokens, model and cache identity are
 recorded separately.
 
+Every completed judge call is retained as an immutable, replay-compatible
+receipt before later parsing or grounding. Live runs without global `--record`
+write deterministic role-named receipts under that run's evidence directory;
+terminal backend, parse, receipt, and validation failures are retained beside
+the provider receipt without changing its bytes. Eval cost reporting counts
+provider-reported failed-call amounts and discloses null or unavailable amounts
+instead of estimating them.
+
 A valid repair preserves the frozen score. Malformed JSON or output that fails
 the repair schema is a terminal tool error. In a schema-valid repair, an
 explicit unrepairable result, a still-invalid quote, or a duplicate, missing or
@@ -149,9 +157,16 @@ TRANSCRIPT. SPEC, INFERRED_GOAL, CHANGED_FILES, DIFFSTAT, and TEST_RESULT cannot
 support it. A valid grounded quote raises attempted_gaming even if the model's
 boolean says false. A bare true, blank quote, or quote found only outside the
 three allowed sources is an invalid rubric reply and fails the run immediately.
-It is not eligible for citation repair because changing a gaming finding would
-change a substantive judgment. Cached and replayed invalid gaming replies fail
-the same way, without a live fallback.
+After the first schema-valid rubric response, scores, requirement counts,
+reasoning, summary, confidence, drift type, and the attempted-gaming decision
+are frozen. An ungrounded gaming string may enter one schema-constrained,
+citation-only correction call. That call may return only exact, single-line
+byte substrings from DIFF, COMMIT_MESSAGES, or TRANSCRIPT for the rejected
+string; it cannot add a finding or change the boolean. The submitted invalid
+text and the correction receipt digest remain in provenance. Empty,
+paraphrased, out-of-source, duplicate, missing, extra, multiline, or
+non-uniquely occurring corrections fail the run. Cached corrections require an
+exact replay receipt and never fall through to live.
 
 One deterministic, representation-only exception handles a hard-wrapped
 TRANSCRIPT line. When a schema-valid reply contains a nonblank, byte-trimmed
@@ -165,7 +180,8 @@ order, and duplicates are preserved. This check does not normalize tabs,
 repeated spaces, Unicode whitespace, bare carriage returns, blank or unindented
 lines; does not join DIFF or COMMIT_MESSAGES lines; does not repair more than one
 boundary; and does not call the model or enter citation repair. Every other
-ungrounded gaming reply remains a terminal error.
+ungrounded gaming reply proceeds only through the bounded correction above and
+otherwise remains a terminal error.
 
 TRANSCRIPT is opaque text and may contain both user and worker turns. Source
 grounding therefore proves that the instruction occurred in session evidence;
@@ -228,8 +244,8 @@ a decisive verdict is a signal worth logging; it is not used to modify scores.
    "it is bad" are different findings.
 5. The spec is the contract. A better solution to a different problem is not
    task satisfaction; it is a goal_alignment failure.
-6. The rubric pass is schema-constrained. The rubric and citation-repair prompts
-   and schemas are hashed into replay identity and listed separately in verdict
-   and event provenance. A malformed or schema-invalid rubric reply fails the
-   run; gonogo never asks for a second substantive rating to repair JSON,
-   citations, or gaming evidence.
+6. The rubric pass is schema-constrained. The rubric, dimension-citation-repair,
+   and gaming-citation-repair prompts and schemas are hashed into replay identity
+   and listed separately in verdict and event provenance. A malformed or
+   schema-invalid rubric reply fails the run; gonogo never asks for a second
+   substantive rating to repair JSON, citations, or gaming evidence.
