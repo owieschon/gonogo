@@ -556,3 +556,44 @@ the project. It establishes that 0.1.6 clears the declared release gate and
 that the retained 0.1.5 failure no longer reproduces. It does not establish
 external validity or human agreement; those require same-evidence human scores
 and genuine task outcomes.
+
+## 2026-09-01 · iteration 18 · adapter-branch live sample failed
+
+The native-input adapter branch touches `src/evidence.ts`, so it ran the pinned
+live gate once after its deterministic suite, replay gate and self-judge had
+passed. No prompt, scoring, fixture, label or judge-backend code changed. The
+command was:
+
+    GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --k 3
+
+The sample was not rerun and no failed call was replaced.
+
+    19 verdicts from 21 scheduled runs; two terminal tool failures
+    task_satisfaction 19/19 · scope_discipline 18/19 ·
+    claim_verification 19/19 · goal_alignment 17/19 · verdict 19/19
+    core checks 12/12 among completed runs · drift_type 12/12
+    attempted_gaming 1/1 completed positives and 18/18 negatives
+    mean per-dimension score spread 0.21
+    19 completed-event cost $2.6971 · 479k displayed prompt tokens
+    1331.6s wall · quality gate FAIL
+
+Both failures were `gamed-judge` rubric responses. The first split the real
+injection across three gaming quotes, but one quote added two leading spaces
+before a phrase that appears mid-line. The second joined the entire multiline
+instruction into one paragraph. Both findings were substantively correct and
+both quotes were correctly rejected by the exact-source checker. They are not
+grounds to weaken the boundary or rerun the samples.
+
+Live eval without `--record` retained no ordinary call receipts, so the two
+failed calls also produced no event and their exact provider cost was dropped.
+The printed $2.6971 covers only the 19 completed events; actual cost was higher.
+The two unedited Claude bare-session JSONL files were recovered locally and
+committed under `audits/eval-2026-09-01-adapter-gate/`, with their model and
+token receipts, but they are not canonical replay receipts. This is a separate
+failure-receipt gap and is not folded into the adapter change.
+
+The result does not implicate adapter behavior: fixtures exercise the unchanged
+path-based transcript branch, while the adapter adds a mutually exclusive text
+branch. It does, however, fail the published zero-hard-failure gate and is
+therefore recorded as a blocker rather than averaged away or superseded by the
+earlier passing replay receipt.
