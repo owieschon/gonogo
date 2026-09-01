@@ -1,12 +1,16 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   evaluateEvalQualityGate,
+  evalCitationRepairReceiptSink,
   loadEvalQualityFloors,
   parseEvalQualityFloors,
   type EvalQualityFloors,
   type EvalQualityGateInput,
 } from "./eval.ts";
+import { buildCacheEntry, serializeCacheEntry } from "./replay.ts";
 import type { Dimension } from "./types.ts";
 
 const FLOORS: EvalQualityFloors = {
@@ -130,4 +134,44 @@ test("threshold policy parsing fails closed on version, shape, and range errors"
   expect(() => parseEvalQualityFloors({ ...valid, min_verdict_accuracy: 1.1 })).toThrow(
     "from 0 to 1",
   );
+});
+
+test("live eval without --record retains a run-local citation-repair receipt", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gonogo-eval-receipt-"));
+  try {
+    const receipt = buildCacheEntry(
+      {
+        promptHash: "a".repeat(64),
+        evidenceHash: "b".repeat(64),
+        sample: 2,
+        backend: "claude-cli",
+        instrumentVersion: "0.1.4",
+        model: "claude-sonnet-5",
+      },
+      {
+        recorded_at: "2026-08-31T00:00:00.000Z",
+        model_version: "claude-sonnet-5",
+        backend: "claude-cli",
+        latency_ms: 12,
+        cost_usd: 0.01,
+        tokens_in: 10,
+        tokens_out: 2,
+        text: '{"repairs":[]}',
+      },
+    );
+    const options = { eventsPath: join(dir, "events.jsonl"), record: false, replay: false };
+    const sink = evalCitationRepairReceiptSink(options, "eval-run");
+    expect(sink).toBeFunction();
+    sink!(receipt);
+    expect(
+      readFileSync(
+        join(dir, "runs", "eval-run", "evidence", "citation-repair-receipt.json"),
+        "utf8",
+      ),
+    ).toBe(serializeCacheEntry(receipt));
+    expect(evalCitationRepairReceiptSink({ ...options, record: true }, "recorded")).toBeUndefined();
+    expect(evalCitationRepairReceiptSink({ ...options, replay: true }, "replayed")).toBeUndefined();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

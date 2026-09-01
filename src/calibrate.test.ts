@@ -128,6 +128,7 @@ function repair(source: "live" | "cache" = "live"): Record<string, unknown> {
     source,
     prompt_sha256: "a".repeat(64),
     evidence_sha256: "b".repeat(64),
+    receipt_sha256: "c".repeat(64),
     requested_dimensions: ["task_satisfaction"],
     repaired_dimensions: ["task_satisfaction"],
     abstained_dimensions: [],

@@ -9,6 +9,7 @@ import { runJudge } from "./rubric.ts";
 import { renderHtml } from "./report.ts";
 import { runEval } from "./eval.ts";
 import { runCalibrate } from "./calibrate.ts";
+import { serializeCacheEntry } from "./replay.ts";
 import { makeBackend } from "./judges/index.ts";
 import {
   EVENT_SCHEMA_VERSION,
@@ -209,12 +210,20 @@ async function cmdJudge(args: Args): Promise<number> {
     disclosure: disclosureOf(args),
     replayDir: args.replay === true ? DEFAULT_CACHE : undefined,
     recordDir: args.record === true ? DEFAULT_CACHE : undefined,
+    onCitationRepairReceipt: (receipt) =>
+      writeFileSync(
+        join(outDir, "evidence", "citation-repair-receipt.json"),
+        serializeCacheEntry(receipt),
+      ),
   });
 
   writeFileSync(join(outDir, "verdict.json"), JSON.stringify(verdictFile, null, 2) + "\n");
   writeFileSync(join(outDir, "verdict.html"), renderHtml(verdictFile));
   writeFileSync(join(outDir, "evidence", "raw-blind-pass.txt"), raw.blind);
   writeFileSync(join(outDir, "evidence", "raw-rubric-pass.txt"), raw.rubric);
+  if (raw.citation_repair !== undefined) {
+    writeFileSync(join(outDir, "evidence", "raw-citation-repair.txt"), raw.citation_repair);
+  }
 
   const d = verdictFile.dimensions;
   const cell = (k: keyof typeof d) => (d[k].score === "abstain" ? "abstain" : String(d[k].score));
