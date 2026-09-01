@@ -329,3 +329,28 @@ unchanged. Applied to this sample, the new negative controls fail the
 `merged-but-wrong` and `scope-creep` false positives. This correction therefore
 removes a bad label without converting the live sample into a pass or rerolling
 it. The remaining failures require an instrument change and a fresh live run.
+
+## 2026-08-31 · iteration 13 · rejected 0.1.2 schema contract
+
+The 0.1.2 release candidate moved the rubric pass to Claude Code's native
+structured-output path. Two tiny preflight calls established the intended
+envelope on Claude Code 2.1.238: an ordinary call returned `result`, and a
+schema-constrained call returned the object in `structured_output`.
+
+The full record attempt then found a difference between the tiny schema and the
+shipped one. Claude Code rejected the shipped Draft 2020-12 meta-schema URI
+before inference on every completed rubric attempt:
+
+    Error: --json-schema is not a valid JSON Schema: no schema with key or ref
+    "https://json-schema.org/draft/2020-12/schema"
+
+The run was stopped after eight identical failures rather than spend on the
+remaining deterministic failures. It produced eight blind-pass receipts, zero
+rubric receipts, zero fixture events, 16,626 input tokens, 909 output tokens and
+$0.06627405 in model cost. The partial receipts remain isolated in the
+disposable worktree and are not committed or used for calibration.
+
+The schema semantics did not change; 0.1.3 removes only the unsupported
+`$schema` annotation. The instrument version advances so none of the partial
+0.1.2 blind replies can enter or subsidize the corrected sample. A fresh 0.1.3
+run is required; the failed attempt is not an evaluation result.

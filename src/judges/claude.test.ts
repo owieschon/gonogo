@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   claudeArgs,
   claudeFailureDetail,
@@ -11,6 +12,13 @@ const structuredSchema = {
   required: ["verdict"],
   additionalProperties: false,
 } as const;
+
+test("the shipped rubric schema omits the meta-schema URI rejected by Claude Code 2.1.238", () => {
+  const schema = JSON.parse(
+    readFileSync(new URL("../../prompts/rubric-pass.schema.json", import.meta.url), "utf8"),
+  );
+  expect(schema.$schema).toBeUndefined();
+});
 
 test("passes a structured schema to Claude without changing ordinary calls", () => {
   const ordinary = claudeArgs("claude-sonnet-5");

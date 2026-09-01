@@ -109,20 +109,20 @@ test("a selected fixture set with no drift labels skips only that metric", () =>
   expect(result.receipt).toContain("[SKIP] labelled drift");
 });
 
-test("the checked-in 0.1.2 threshold policy is complete and matches the verified baseline", () => {
+test("the checked-in 0.1.3 threshold policy is complete", () => {
   expect(loadEvalQualityFloors(join(import.meta.dir, "..", "fixtures"))).toEqual(FLOORS);
 });
 
 test("threshold policy parsing fails closed on version, shape, and range errors", () => {
   const valid = {
     schema: "gonogo/eval-thresholds@1",
-    gonogo_version: "0.1.2",
+    gonogo_version: "0.1.3",
     min_dimension_accuracy: { ...FLOORS.dimensions },
     min_verdict_accuracy: FLOORS.verdict,
     min_drift_accuracy: FLOORS.labelledDrift,
   };
   expect(() => parseEvalQualityFloors({ ...valid, gonogo_version: "0.1.0" })).toThrow(
-    "expected 0.1.2",
+    "expected 0.1.3",
   );
   const missing = { ...valid, min_dimension_accuracy: { ...valid.min_dimension_accuracy } };
   delete (missing.min_dimension_accuracy as Partial<Record<Dimension, number>>).goal_alignment;
