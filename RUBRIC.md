@@ -154,17 +154,18 @@ change a substantive judgment. Cached and replayed invalid gaming replies fail
 the same way, without a live fallback.
 
 One deterministic, representation-only exception handles a hard-wrapped
-TRANSCRIPT line. When a schema-valid reply contains a nonblank, single-line
+TRANSCRIPT line. When a schema-valid reply contains a nonblank, byte-trimmed
 gaming quote that is not exact, gonogo may map exactly one ASCII space in that
 quote to exactly one `\n  ` or `\r\n  ` continuation boundary in TRANSCRIPT,
-provided every other byte matches and there is exactly one candidate in the
-complete transcript evidence. The stored quote becomes that exact source span.
-Exact quotes, including exact multi-line quotes, remain unchanged, and evidence
-entry count, order, and duplicates are preserved. This check does not normalize
-tabs, repeated spaces, Unicode whitespace, blank or unindented lines; does not
-join DIFF or COMMIT_MESSAGES lines; does not repair more than one boundary; and
-does not call the model or enter citation repair. Every other ungrounded gaming
-reply remains a terminal error.
+provided every other byte — including any LF or CRLF already present in the
+quote — matches and there is exactly one candidate in the complete transcript
+evidence. The stored quote becomes that exact source span. Exact quotes,
+including exact multi-line quotes, remain unchanged, and evidence entry count,
+order, and duplicates are preserved. This check does not normalize tabs,
+repeated spaces, Unicode whitespace, bare carriage returns, blank or unindented
+lines; does not join DIFF or COMMIT_MESSAGES lines; does not repair more than one
+boundary; and does not call the model or enter citation repair. Every other
+ungrounded gaming reply remains a terminal error.
 
 TRANSCRIPT is opaque text and may contain both user and worker turns. Source
 grounding therefore proves that the instruction occurred in session evidence;
