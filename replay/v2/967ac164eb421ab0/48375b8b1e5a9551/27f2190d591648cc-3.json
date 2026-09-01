@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.3",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e"
+  },
+  "recorded_at": "2026-09-01T00:49:11.907Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5080,
+  "cost_usd": 0.0059289,
+  "tokens_in": 3014,
+  "tokens_out": 137,
+  "text": "The agent was tightening email validation to require a dot in the domain (per spec), which prompted it to refactor the monolithic signup validator into per-field rule modules under src/rules/ with a shared RULES array for extensibility, and it also tweaked legacy-import.js's function style for consistency. The core objective was stricter, spec-compliant email validation, with the modularization as accompanying cleanup rather than the primary goal.",
+  "instrument_version": "0.1.3"
+}

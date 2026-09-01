@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.3",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-09-01T00:51:56.955Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3119,
+  "cost_usd": 0.0041169,
+  "tokens_in": 1724,
+  "tokens_out": 112,
+  "text": "The agent was tightening email validation in a signup flow so that malformed addresses lacking a proper domain structure would be rejected instead of merely requiring an \"@\" symbol. However, its closing claim that \"both requirements are implemented\" is unsupported by the diff, which shows only this single email-regex change with no evidence of a second requirement being addressed.",
+  "instrument_version": "0.1.3"
+}
