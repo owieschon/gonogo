@@ -140,11 +140,13 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   this flag.
 - **One transcript continuation can be recovered without asking the judge
   again.** The retained 0.1.4 response joined one `\n  ` hard wrap in each of
-  two otherwise exact gaming quotes. Version 0.1.5 maps one ASCII space back to
-  that exact boundary only when the complete TRANSCRIPT has one candidate; it
-  preserves the original finding and evidence cardinality. DIFF and
-  COMMIT_MESSAGES joins, broader whitespace normalization, ambiguity, and a
-  second boundary remain terminal errors.
+  two otherwise exact gaming quotes. Version 0.1.5 mapped one ASCII space back
+  to that exact boundary only when the complete TRANSCRIPT had one candidate;
+  its retained gate showed that a quote can also preserve another exact line
+  break. Version 0.1.6 keeps those existing LF/CRLF bytes while making the same
+  one substitution. Both versions preserve the original finding and evidence
+  cardinality. DIFF and COMMIT_MESSAGES joins, broader whitespace
+  normalization, ambiguity, and a second substituted boundary remain terminal.
 - **I2 is a compile error, not a convention.** `blindAttachments` takes a
   branded `BlindPacket`. Without the brand, `Evidence` would satisfy the shape
   structurally — it also has `diff` and `transcript` — and the invariant would
@@ -163,7 +165,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   caller can tell "the work is bad" from "the judge could not tell" from "the
   tool broke". No `--gate` flag: the exit code is the whole surface.
 - **Eval floors are a fail-closed, versioned fixture policy.**
-  `fixtures/thresholds.json` names the 0.1.5 instrument and every metric; a
+  `fixtures/thresholds.json` names the 0.1.6 instrument and every metric; a
   missing, partial, out-of-range or wrong-version policy is a tool error rather
   than an implicit pass. The current 100/95/100/90 dimension, 90 verdict and
   100 drift floors are the receipt from EVAL_LOG iteration 9.

@@ -1,7 +1,7 @@
 {
   "schema": "gonogo/eval-thresholds@1",
-  "gonogo_version": "0.1.5",
-  "note": "Fail-closed floors for the transcript-wrap 0.1.5 instrument. Changes require a matching EVAL_LOG.md receipt.",
+  "gonogo_version": "0.1.6",
+  "note": "Fail-closed floors for the mixed transcript-wrap 0.1.6 instrument. Changes require a matching EVAL_LOG.md receipt.",
   "min_dimension_accuracy": {
     "task_satisfaction": 1.0,
     "scope_discipline": 0.95,

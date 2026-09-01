@@ -61,8 +61,11 @@ whole rubric and did not retain the discarded receipt; citation-only repair
 with a frozen rubric response identifies the tree as 0.1.4. The retained 0.1.4
 gate then exposed one schema-valid gaming quote that joined a single hard-wrapped
 transcript continuation. Deterministic, transcript-only recovery of that exact
-representation identifies the tree as 0.1.5. Runs across versions are reported
-separately and never pooled silently into one agreement figure.
+representation identifies the tree as 0.1.5. Its retained gate exposed a mixed
+quote that preserved one exact line break while joining one other continuation;
+preserving existing LF/CRLF bytes during the same one-boundary recovery
+identifies the tree as 0.1.6. Runs across versions are reported separately and
+never pooled silently into one agreement figure.
 
 ### Known limits
 

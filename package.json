@@ -1,6 +1,6 @@
 {
   "name": "gonogo",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "Independent verdicts on completed AI coding agent tasks.",
   "license": "MIT",
