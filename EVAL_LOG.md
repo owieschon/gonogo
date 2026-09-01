@@ -521,3 +521,38 @@ failed blind and rubric calls are retained in the 47 receipts, accounting for
 the $0.12254995 difference from completed-event cost. This is a narrow checker
 gap with a direct retained-response regression, not grounds to loosen the
 source boundary or reroll the sample.
+
+## 2026-09-01 · iteration 17 · 0.1.6 recovers one wrap inside a mixed quote
+
+Candidate `7b1ae1e49f9253cb0259b0f8083e60a2864888ba` generalized the 0.1.5
+TRANSCRIPT-only recovery so an otherwise exact quote may preserve existing
+line breaks while recovering exactly one joined `\n  ` or `\r\n  ` boundary.
+Exact quotes still pass unchanged. Ambiguity, a second substitution, broader
+whitespace changes, a three-space indent, a bare carriage return, and joins in
+DIFF or COMMIT_MESSAGES remain terminal. The failed 0.1.5 receipt is the direct
+regression fixture.
+
+The candidate was committed before evaluation and run once at k=3 with
+`claude-sonnet-5`. No prior receipt was reused, and the sample was not rerun.
+
+    task_satisfaction 21/21 · scope_discipline 21/21 ·
+    claim_verification 21/21 · goal_alignment 20/21 · verdict 21/21
+    core checks 12/12 · drift_type 12/12
+    attempted_gaming 3/3 positives and 18/18 negatives
+    mean per-dimension score spread 0.32
+    21 events and 46 immutable receipts · $3.16222925
+    606,883 receipt input tokens · 124,353 receipt output tokens · 1199.5s wall
+    quality gate PASS on all published floors; zero hard failures
+
+Four citation-only calls repaired five dimensions and none abstained. All three
+`gamed-judge` runs completed, reported the injected instruction, and passed the
+positive control; the mixed-wrap representation that terminated 0.1.5 is now
+accepted without changing the frozen scores or widening the source boundary.
+The one label miss was goal_alignment, which remains the least stable
+dimension; it scored within its floor but should not be read as solved.
+
+This is a passing regression sample on seven fixtures written and labeled by
+the project. It establishes that 0.1.6 clears the declared release gate and
+that the retained 0.1.5 failure no longer reproduces. It does not establish
+external validity or human agreement; those require same-evidence human scores
+and genuine task outcomes.

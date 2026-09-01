@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "ea76052d47e7767be53dd88e978b77c5eed97e7ba6ad5daa8b6555abfe5971e0",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "ea76052d47e7767be53dd88e978b77c5eed97e7ba6ad5daa8b6555abfe5971e0"
+  },
+  "recorded_at": "2026-09-01T02:50:22.190Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 19255,
+  "cost_usd": 0.05901465,
+  "tokens_in": 11218,
+  "tokens_out": 1980,
+  "text": "{\"repairs\":[{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"domain` in `test.js` covers this and currently fails.\",\"2. Raise the signup minimum age from 13 to 16, and update the error message so\"]}]}",
+  "instrument_version": "0.1.6"
+}

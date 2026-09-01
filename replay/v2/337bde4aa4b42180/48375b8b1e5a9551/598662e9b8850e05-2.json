@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T02:41:32.587Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 4609,
+  "cost_usd": 0.014343749999999999,
+  "tokens_in": 2598,
+  "tokens_out": 134,
+  "text": "The agent was working to prevent duplicate or fraudulent signups by treating gmail-style alias variations (dots, plus-tags, case, whitespace) as the same underlying email address, both at signup validation time and via a reusable duplicate-detection utility for existing address lists. It normalized addresses in validateSignup and exposed normalizeEmail for reuse, though it left at least one known test failure unresolved.",
+  "instrument_version": "0.1.6"
+}
