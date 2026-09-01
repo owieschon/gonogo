@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { assertKnownFlags, parseArgs, str } from "./args.ts";
 import type { Args } from "./args.ts";
 import { collectEvidence, writeEvidence } from "./evidence.ts";
+import { resolvePullRequest, resolveWorkspace } from "./adapters.ts";
 import { runJudge } from "./rubric.ts";
 import { renderHtml } from "./report.ts";
 import { runEval } from "./eval.ts";
@@ -34,9 +35,10 @@ const EXIT = { go: 0, noGo: 1, inconclusive: 2, toolError: 3 } as const;
 
 const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed agent tasks
 
-  gonogo judge --spec <file|string> --repo <path> [--base main]
+  gonogo judge [--spec <file|string>] [--repo <path>] [--base <ref>]
+                [--workspace <id> | --pr <url|number>]
                 [--transcript <file>] [--test-cmd <string>] [--judge claude]
-                [--task <id>] [--workspace <id>] [--disclosure none|mentioned]
+                [--task <id>] [--disclosure none|mentioned]
                 [--record] [--replay] [--out <dir>] [--max-diff-chars N] [--quiet]
 
   gonogo eval [--k 3] [--replay] [--record] [--only <fixture>]
@@ -48,14 +50,15 @@ const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed ag
                  [--run <run_id>] [--merged-at <iso8601>]
 
 Flags:
-  --spec        the task prompt the agent was given; a path if it exists, else literal text
+  --spec        assigned task prompt; required unless an adapter can resolve it
   --repo        repository the agent worked in (default: .)
   --base        git ref to diff against (default: main)
   --transcript  session log; treated as opaque text
   --test-cmd    shell command run in --repo; exit code and output become evidence
   --judge       backend name: claude (implemented), codex, qwen (stubs)
   --task        operator-assigned id grouping runs that attack the same task
-  --workspace   opaque workspace id, recorded for later joins
+  --workspace   resolve repo, task and terminal transcript from a Superset workspace
+  --pr          judge an exact GitHub PR checkout; linked closing issue is the default spec
   --disclosure  whether the worker was told its output would be judged (default: none)
   --record      write raw judge output to the replay cache
   --replay      serve raw judge output from the replay cache; no judge is invoked
@@ -72,7 +75,7 @@ const BOOLEAN_FLAGS = new Set(["record", "replay", "quiet", "markdown"]);
 const MULTI_FLAGS = new Set(["dir"]);
 const COMMAND_FLAGS: Record<string, ReadonlySet<string>> = {
   judge: new Set([
-    "spec", "repo", "base", "transcript", "test-cmd", "judge", "task", "workspace",
+    "spec", "repo", "base", "transcript", "test-cmd", "judge", "task", "workspace", "pr",
     "disclosure", "record", "replay", "out", "max-diff-chars", "events", "run", "quiet",
   ]),
   eval: new Set(["k", "replay", "record", "only", "judge", "markdown", "events"]),
@@ -147,11 +150,34 @@ function exitCodeFor(verdict: string): number {
 async function cmdJudge(args: Args): Promise<number> {
   cacheMode(args);
   const specArg = str(args, "spec");
-  if (!specArg) die("--spec is required (a file path, or the prompt text itself)");
-  const spec = specText(specArg);
+  const explicitSpec = specArg === undefined ? undefined : specText(specArg);
+  const workspace = str(args, "workspace");
+  const pr = str(args, "pr");
+  if (workspace !== undefined && pr !== undefined) {
+    die("--workspace and --pr are mutually exclusive");
+  }
+  const transcriptPath = str(args, "transcript");
+  const overrides = {
+    spec: explicitSpec,
+    repo: str(args, "repo"),
+    base: str(args, "base"),
+    transcriptProvided: transcriptPath !== undefined,
+    taskId: str(args, "task"),
+  };
+  const adapted = workspace !== undefined
+    ? resolveWorkspace(workspace, overrides)
+    : pr !== undefined
+      ? resolvePullRequest(pr, overrides)
+      : null;
+  if (adapted === null && explicitSpec === undefined) {
+    die("--spec is required unless --workspace resolves a linked task or --pr resolves a closing issue");
+  }
 
-  const repo = resolve(str(args, "repo", ".")!);
-  const base = str(args, "base", "main")!;
+  const spec = adapted?.spec ?? explicitSpec!;
+  const repo = adapted?.repo ?? resolve(str(args, "repo", ".")!);
+  const base = adapted?.base ?? str(args, "base", "main")!;
+  const taskId = adapted?.taskId ?? str(args, "task") ?? null;
+  const workspaceId = adapted?.workspaceId ?? null;
   const backendName = str(args, "judge", "claude")!;
   const quiet = args.quiet === true;
 
@@ -179,12 +205,19 @@ async function cmdJudge(args: Args): Promise<number> {
   if (inside(repo, judgeEventsPath)) excludedRoots.push(judgeEventsPath);
 
   log(`gonogo ${GONOGO_VERSION}  repo=${repo}  base=${base}  judge=${backendName}`);
+  if (adapted !== null) {
+    log(
+      `  ${adapted.mode} adapter=${adapted.adapterVersion}  ` +
+      `spec=${adapted.specSource}  transcript=${adapted.transcriptSource}`,
+    );
+  }
   log("collecting evidence...");
   const ev = collectEvidence({
     repo,
     base,
     spec,
-    transcriptPath: str(args, "transcript"),
+    transcriptPath,
+    transcriptText: adapted?.transcriptText,
     testCmd: str(args, "test-cmd"),
     maxDiffChars: maxDiffChars(args),
     excludeUntrackedRoots: excludedRoots,
@@ -205,8 +238,8 @@ async function cmdJudge(args: Args): Promise<number> {
     eventsPath: judgeEventsPath,
     runId,
     kind: "real",
-    taskId: str(args, "task") ?? null,
-    workspaceId: str(args, "workspace") ?? null,
+    taskId,
+    workspaceId,
     disclosure: disclosureOf(args),
     replayDir: args.replay === true ? DEFAULT_CACHE : undefined,
     recordDir: args.record === true ? DEFAULT_CACHE : undefined,

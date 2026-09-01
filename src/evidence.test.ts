@@ -105,6 +105,40 @@ describe("collectEvidence untracked-file boundary", () => {
     expect(first.subjectHash).not.toBe(second.subjectHash);
   });
 
+  test("accepts opaque adapter transcript text and binds it into subject identity", () => {
+    const path = repo();
+    const first = collectEvidence({
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      transcriptText: "workspace session one",
+    });
+    const second = collectEvidence({
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      transcriptText: "workspace session two",
+    });
+
+    expect(first.transcript).toBe("workspace session one");
+    expect(first.subjectHash).not.toBe(second.subjectHash);
+  });
+
+  test("rejects two transcript sources", () => {
+    const path = repo();
+    const transcript = join(path, "session.txt");
+    writeFileSync(transcript, "file transcript\n");
+
+    expect(() => collectEvidence({
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      transcriptPath: transcript,
+      transcriptText: "adapter transcript",
+      excludeUntrackedRoots: [transcript],
+    })).toThrow("mutually exclusive");
+  });
+
   test("omits tool output below an absolute exclusion root", () => {
     const path = repo();
     const runs = join(path, "runs");
