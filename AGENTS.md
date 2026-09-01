@@ -32,8 +32,9 @@ neither, which is why CI uses it.
 
     bin/gonogo          bash launcher over src/cli.ts
     src/evidence.ts     git diff, changed files, commits, test run -> Evidence
+    src/subject.ts      model-independent subject identity and applicability
     src/blind.ts        the branded BlindPacket that makes I2 a compile error
-    src/events.ts       event schema, append, read, v1 -> v2 migration
+    src/events.ts       event schema, append, read, legacy -> current migration
     src/replay.ts       content-addressed record/replay cache
     src/rubric.ts       the two passes, JSON parsing, verdict arithmetic
     src/report.ts       verdict.json -> self-contained verdict.html
@@ -67,8 +68,9 @@ invariants it affects** and **must pass `gonogo eval`**.
   evidence abstains; an abstention caps the verdict at `inconclusive`.
 - **I6 Calibration over belief** — judge-versus-human agreement is the only
   trust currency. Never claim accuracy the calibration log does not show.
-- **I7 Provenance** — model version, prompt hashes, evidence hash, tool version
-  on every verdict and every event.
+- **I7 Provenance** — model version, prompt hashes, judge-call `evidence_hash`,
+  model-independent `subject_hash`, and tool version on every new verdict and
+  judge event. Legacy records migrate with `subject_hash: null`.
 
 Breaking one of these is not a trade-off to weigh against convenience. If a
 change seems to require it, the change is wrong or DESIGN.md is, and settling
@@ -78,11 +80,11 @@ which comes before the code.
 
 `events.jsonl` at the repo root is append-only and is the substrate `eval` and
 `calibrate` read. One event per judge invocation, per rater, per recorded
-outcome. `schema_version` is 2; `src/events.ts` migrates v1 on read.
+outcome. `schema_version` is 4; `src/events.ts` migrates v1-v3 on read.
 
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
-  `attempted_gaming`, `disclosure`, prompt and evidence hashes, latency, tokens
-  and cost, and `rater_id: judge:<backend>`.
+  `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,
+  latency, tokens and cost, and `rater_id: judge:<backend>`.
 - Rater events (`kind: rater`) are a human — or later another judge — scoring
   the same `run_id`. Agreement is computed per rater pair, which is why panel
   mode will be data and not code.
@@ -112,6 +114,14 @@ prompt. If record-on-miss combines one cached pass with one live pass, the run i
 marked replayed and excluded from calibration; usage counts only the live work
 performed in that run. Recording and replay both pin `claude-sonnet-5`; an
 unpinned invocation is a different cache identity and must miss.
+
+`evidence_hash` identifies a rendered judge call, including evaluator-owned
+attachments such as `INFERRED_GOAL`; it is the replay key. `subject_hash`
+identifies the complete operator/worker evidence before rendering or truncation:
+spec, diff, commit claims, transcript and test command/result/output. A consumer
+must recollect that evidence before acting on a verdict. Equal means `CURRENT`,
+different means `STALE`, and a legacy verdict without the hash is
+`UNVERIFIABLE`; none of those states requires a judge call.
 
 ## Rules
 

@@ -61,8 +61,12 @@ These are law, not style.
   be measured. Judge-versus-human agreement per dimension is the only trust
   currency it accepts. A thermometer is trusted because it was calibrated, not
   because it seems smart.
-- **I7 — Provenance.** Every verdict is reproducible: model version, prompt file
-  hashes, tool version, evidence hashes, timestamps.
+- **I7 — Provenance.** Every new verdict carries two distinct identities:
+  `subject_hash` binds the complete operator/worker evidence before truncation,
+  while the judge-call evidence hashes bind the rendered attachments used for
+  replay. Model version, prompt hashes, tool version and timestamps complete the
+  receipt. Recollecting the subject deterministically establishes whether a
+  verdict is current without asking a model.
 
 ## Known limits
 
