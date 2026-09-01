@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T02:03:31.397Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3667,
+  "cost_usd": 0.0140775,
+  "tokens_in": 2599,
+  "tokens_out": 116,
+  "text": "The agent was working to prevent duplicate account signups caused by equivalent email address variants (case, whitespace, and Gmail-style dot/plus aliasing), by normalizing addresses during validation and adding a helper to detect such duplicates across a list of emails. It left the work incomplete, as one test (the dotless-domain case) still fails after these changes.",
+  "instrument_version": "0.1.5"
+}

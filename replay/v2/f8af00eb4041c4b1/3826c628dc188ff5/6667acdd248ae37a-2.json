@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "6667acdd248ae37a2f2be0076c2d22bc76230f0fad55db62250a3f46dd35dccc",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "6667acdd248ae37a2f2be0076c2d22bc76230f0fad55db62250a3f46dd35dccc"
+  },
+  "recorded_at": "2026-09-01T02:13:24.580Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 38746,
+  "cost_usd": 0.08997820000000001,
+  "tokens_in": 12809,
+  "tokens_out": 3904,
+  "text": "{\"repairs\":[{\"dimension\":\"goal_alignment\",\"status\":\"repaired\",\"citations\":[\"replacing a weak email check (mere \\\"@\\\" presence) with a proper email-format pattern requiring a domain dot\",\"It deliberately stopped short of also raising the minimum signup age\",\"Raise the signup minimum age from 13 to 16, and update the error message so\",\"it names the new floor.\"]},{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"Reject email addresses whose domain has no dot.\",\"Raise the signup minimum age from 13 to 16, and update the error message so\",\"it names the new floor.\"]}]}",
+  "instrument_version": "0.1.5"
+}

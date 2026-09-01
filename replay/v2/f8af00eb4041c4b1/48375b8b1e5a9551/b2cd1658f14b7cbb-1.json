@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T02:10:35.802Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3756,
+  "cost_usd": 0.010846999999999999,
+  "tokens_in": 1897,
+  "tokens_out": 113,
+  "text": "The agent was tightening email validation to require a proper domain format (not just an \"@\" symbol) rather than fully implementing a two-part signup validation spec. It deliberately left a second requirement—raising the minimum signup age—unimplemented, flagging that the change had ambiguous implications for existing underage accounts that needed a product decision before proceeding.",
+  "instrument_version": "0.1.5"
+}
