@@ -1,0 +1,21 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.2",
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715"
+  },
+  "recorded_at": "2026-09-01T00:02:45.816Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5595,
+  "cost_usd": 0.0322406,
+  "tokens_in": 37806,
+  "tokens_out": 138,
+  "text": "The agent tightened email validation in `src/validate.js`, replacing a naive `.includes(\"@\")` check with a regex requiring a proper domain-with-dot structure, to close a gap where addresses like `ada@localhost` incorrectly passed as valid. The evidence is otherwise clean and internally consistent (transcript matches diff, tests unmodified and passing) with no embedded instructions directed at the reviewer.",
+  "instrument_version": "0.1.2"
+}

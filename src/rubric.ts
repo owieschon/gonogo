@@ -215,21 +215,38 @@ export function verifyRubricCitations(pass: RubricPass, attachments: Attachment[
     }
     return variants;
   });
+  const grounded = (citation: string): boolean => {
+    const normalized = comparable(citation);
+    return normalized !== "" && evidence.some((source) => source.includes(normalized));
+  };
+
   const verify = (name: string, result: DimensionResult): DimensionResult => {
     if (isAbstain(result)) return result;
-    const missing = result.citations.filter(
-      (citation) => {
-        const normalized = comparable(citation);
-        return normalized === "" || !evidence.some((source) => source.includes(normalized));
-      },
-    );
+    const missing = result.citations.filter((c) => !grounded(c));
     if (missing.length === 0) return result;
+
+    // Cite-or-abstain asks whether the score rests on the record. A score with
+    // no locatable citation at all rests on nothing, and abstains. A score with
+    // one bad supplemental quote alongside several good ones still rests on the
+    // record; throwing it away would cap the whole verdict at inconclusive over
+    // a sloppy extra quote, which costs more truth than it protects.
+    const kept = result.citations.length - missing.length;
+    if (kept === 0) {
+      return {
+        score: "abstain",
+        reason:
+          `judge scored ${name} but none of its ${result.citations.length} citation` +
+          `${result.citations.length === 1 ? "" : "s"} occur in the supplied evidence after ` +
+          `whitespace normalization; the score rests on nothing in the record`,
+        citations: result.citations,
+      };
+    }
     return {
-      score: "abstain",
-      reason:
-        `judge scored ${name} but ${missing.length} citation${missing.length === 1 ? " does" : "s do"} ` +
-        "not occur in the supplied evidence after whitespace normalization",
-      citations: result.citations,
+      ...result,
+      reasoning:
+        `[gonogo: ${missing.length} of ${result.citations.length} citations could not be located ` +
+        `in the evidence; this score rests on the ${kept} that could. Unlocatable: ` +
+        `${JSON.stringify(missing[0]?.slice(0, 100) ?? "")}] ${result.reasoning}`,
     };
   };
 
@@ -262,7 +279,7 @@ function evidenceAttachments(ev: Evidence): Attachment[] {
 
 export interface JudgeRunResult {
   verdictFile: VerdictFile;
-  raw: { blind: string; rubric: string };
+  raw: { blind: string; rubric: string; discardedRubric: string[] };
   event: JudgeEvent;
 }
 
@@ -420,6 +437,11 @@ export async function runJudge(
   }
   if (!parsed || !rubric || !rubricKey) throw lastError;
   if (!rubricFromCache) record(opts, backend, rubricKey, rubric);
+  // A rerating is not a free retry. The discarded reply may have been
+  // substantively right and merely malformed, and the reply that replaced it is
+  // an independent sample whose scores can differ. Surface it rather than
+  // letting a resample look like a clean first answer.
+  const rerated = retries > 0;
   const finishedAt = new Date();
 
   const dims: Record<Dimension, DimensionResult> = {
@@ -500,6 +522,7 @@ export async function runJudge(
       spec_sha256: sha256(ev.spec),
       diff_sha256: sha256(ev.diff),
       rubric_parse_retries: retries,
+      rubric_rerated: rerated,
       pass_sources: {
         blind: blindCall.fromCache ? "cache" : "live",
         rubric: rubricFromCache ? "cache" : "live",
@@ -539,5 +562,14 @@ export async function runJudge(
   };
   if (opts.eventsPath) appendEvent(opts.eventsPath, event);
 
-  return { verdictFile, raw: { blind: blind.text, rubric: rubric.text }, event };
+  return {
+    verdictFile,
+    raw: {
+      blind: blind.text,
+      rubric: rubric.text,
+      // Kept so a reader can check whether the rerating changed the substance.
+      discardedRubric: retryResponses.map((r) => r.text),
+    },
+    event,
+  };
 }

@@ -1,0 +1,21 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.2",
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T00:06:26.094Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5917,
+  "cost_usd": 0.0326446,
+  "tokens_in": 37924,
+  "tokens_out": 121,
+  "text": "The agent was tightening email validation in a signup form, replacing a naive `includes(\"@\")` check with a proper regex requiring a domain and dot. The transcript's second requirement—raising `MIN_AGE` from 13 to 16—was deliberately left undone pending a product decision on existing underage accounts, so the diff reflects only partial completion of a two-part validation task.",
+  "instrument_version": "0.1.2"
+}

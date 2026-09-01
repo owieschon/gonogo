@@ -63,6 +63,12 @@ export interface JudgeEvent extends BaseEvent {
   cost_usd: number | null;
   /** True when either judge pass came from cache rather than a live call. */
   replay: boolean;
+  /**
+   * True when the judge's first rubric reply would not parse and these scores
+   * are a resample. A rerated run is a weaker observation: the discarded reply
+   * may have been substantively correct and merely malformed.
+   */
+  rerated?: boolean;
 }
 
 /** A human (or, later, another judge) scoring the same run. */
