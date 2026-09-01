@@ -175,6 +175,7 @@ describe("record-on-miss", () => {
 
   function evidence(): Evidence {
     return {
+      subjectHash: "1".repeat(64),
       repo: "/tmp/example",
       base: "a".repeat(40),
       head: "a".repeat(40),
@@ -229,6 +230,9 @@ describe("record-on-miss", () => {
     expect(live.event.prompt_hashes["prompts/citation-repair.md"]).toBeDefined();
     expect(live.event.prompt_hashes["prompts/citation-repair.schema.json"]).toBeDefined();
     expect(live.verdictFile.provenance.citation_repair).toBeNull();
+    expect(live.verdictFile.subject_hash).toBe("1".repeat(64));
+    expect(live.event.subject_hash).toBe("1".repeat(64));
+    expect(renderHtml(live.verdictFile)).toContain("subject sha256");
 
     const exactReplay = new CountingBackend();
     const fullCache = await runJudge(evidence(), exactReplay, prompts, { recordDir: cache });
@@ -306,6 +310,7 @@ describe("record-on-miss", () => {
 describe("rubric response validation", () => {
   function evidence(): Evidence {
     return {
+      subjectHash: "1".repeat(64),
       repo: "/tmp/example",
       base: "a".repeat(40),
       head: "a".repeat(40),

@@ -11,7 +11,7 @@ import { dirname } from "node:path";
 import { CITATION_REPAIR_DIMENSIONS, DIMENSIONS } from "./types.ts";
 import type { CitationRepair, CitationRepairDimension, Dimension } from "./types.ts";
 
-export const EVENT_SCHEMA_VERSION = 3;
+export const EVENT_SCHEMA_VERSION = 4;
 
 export type EventKind = "fixture" | "real" | "rater" | "outcome";
 
@@ -46,6 +46,9 @@ export interface JudgeEvent extends BaseEvent {
   backend: string;
   model_version: string;
   prompt_hashes: Record<string, string>;
+  /** Model-independent work/evidence identity. Null only on migrated legacy events. */
+  subject_hash: string | null;
+  /** Judge-call identity; includes judge-generated attachments such as INFERRED_GOAL. */
   evidence_hash: string;
   rater_id: string;
   scores: Record<string, number | "abstain">;
@@ -347,6 +350,10 @@ function validateCurrentEvent(value: unknown): GonogoEvent {
   stringField(event.model_version, `${kind}.model_version`);
   const hashes = recordOf(event.prompt_hashes, `${kind}.prompt_hashes`);
   for (const [path, hash] of Object.entries(hashes)) stringField(hash, `${kind}.prompt_hashes.${path}`);
+  if (!Object.hasOwn(event, "subject_hash")) {
+    throw new Error(`${kind}.subject_hash must be a SHA-256 digest or null`);
+  }
+  if (event.subject_hash !== null) sha256Field(event.subject_hash, `${kind}.subject_hash`);
   stringField(event.evidence_hash, `${kind}.evidence_hash`);
   if (typeof event.confidence !== "number" || event.confidence < 0 || event.confidence > 1) {
     throw new Error(`${kind}.confidence must be between 0 and 1`);
@@ -408,10 +415,10 @@ export function requireOutcomeRun(
 }
 
 /**
- * v1/v2 → v3. v1 had no task_id, workspace_id, disclosure, drift_type or
- * attempted_gaming, and no "outcome" kind. v1 and v2 had no citation-repair
- * provenance. Absent fields become their documented defaults; an absent legacy
- * score becomes an abstention, never an invented numeric judgement.
+ * v1/v2/v3 → v4. Earlier versions had no model-independent subject hash;
+ * they migrate to null and must be reinspected before an applicability-aware
+ * consumer acts. Other absent fields become their documented defaults; an
+ * absent legacy score becomes an abstention, never an invented judgement.
  */
 export function migrateEvent(raw: any): GonogoEvent {
   const version = Number(raw?.schema_version ?? 1);
@@ -438,6 +445,7 @@ export function migrateEvent(raw: any): GonogoEvent {
     e.drift_type ??= "other";
     e.attempted_gaming ??= false;
     if (version < 3) e.citation_repair = null;
+    if (version < 4) e.subject_hash = null;
   }
   if (e.kind === "rater") {
     e.review_minutes ??= null;

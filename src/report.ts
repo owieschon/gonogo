@@ -265,6 +265,7 @@ ${
   <tr><th>prompt files</th><td class="mono">${p.prompt_files
     .map((f) => `${esc(f.path)} <span style="color:var(--mut)">${esc(f.sha256.slice(0, 16))}</span>`)
     .join("<br>")}</td></tr>
+  <tr><th>subject sha256</th><td class="mono">${esc(v.subject_hash ?? "unavailable (legacy verdict)")}</td></tr>
   <tr><th>spec sha256</th><td class="mono">${esc(p.spec_sha256)}</td></tr>
   <tr><th>diff sha256</th><td class="mono">${esc(p.diff_sha256)}</td></tr>
   <tr><th>started</th><td class="mono">${esc(p.started_at)}</td></tr>

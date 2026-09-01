@@ -39,6 +39,8 @@ export interface RubricPass {
 }
 
 export interface Evidence {
+  /** Model-independent identity of the complete, pre-elision subject evidence. */
+  subjectHash: string;
   repo: string;
   base: string;
   head: string;
@@ -104,6 +106,8 @@ export interface Provenance {
 
 export interface VerdictFile {
   schema: "gonogo/verdict@1";
+  /** Missing only on legacy artifacts; consumers must treat that as unverifiable. */
+  subject_hash?: string | null;
   /** Stable join keys. Optional only so pre-v0.1 artifacts remain readable. */
   run_id?: string;
   task_id?: string | null;
