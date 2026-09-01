@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import type { Evidence, TestResult } from "./types.ts";
+import { subjectHashOf } from "./subject.ts";
 
 const DEFAULT_MAX_DIFF_CHARS = 120_000;
 const MAX_TRANSCRIPT_CHARS = 60_000;
@@ -82,7 +83,12 @@ function truncate(s: string, max: number): { text: string; truncated: boolean } 
   };
 }
 
-export function runTests(repo: string, cmd: string): TestResult {
+interface TestCapture {
+  visible: TestResult;
+  complete: TestResult;
+}
+
+function captureTests(repo: string, cmd: string): TestCapture {
   const r = spawnSync(cmd, {
     cwd: repo,
     shell: true,
@@ -91,11 +97,19 @@ export function runTests(repo: string, cmd: string): TestResult {
     timeout: 10 * 60 * 1000,
   });
   const raw = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-  return {
+  const complete = {
     command: cmd,
     exitCode: r.status === null ? 124 : r.status,
-    output: truncate(raw, MAX_TEST_OUTPUT_CHARS).text,
+    output: raw,
   };
+  return {
+    complete,
+    visible: { ...complete, output: truncate(raw, MAX_TEST_OUTPUT_CHARS).text },
+  };
+}
+
+export function runTests(repo: string, cmd: string): TestResult {
+  return captureTests(repo, cmd).visible;
 }
 
 export interface CollectOptions {
@@ -155,15 +169,25 @@ export function collectEvidence(opts: CollectOptions): Evidence {
 
   const diff = truncate(rawDiff, opts.maxDiffChars ?? DEFAULT_MAX_DIFF_CHARS);
 
+  let transcriptRaw: string | null = null;
   let transcript: { text: string; truncated: boolean } | null = null;
   if (opts.transcriptPath) {
     // Opaque text on purpose: no format-specific parsing today.
-    transcript = truncate(readFileSync(opts.transcriptPath, "utf8"), MAX_TRANSCRIPT_CHARS);
+    transcriptRaw = readFileSync(opts.transcriptPath, "utf8");
+    transcript = truncate(transcriptRaw, MAX_TRANSCRIPT_CHARS);
   }
 
-  const test = opts.testCmd ? runTests(repo, opts.testCmd) : null;
+  const testCapture = opts.testCmd ? captureTests(repo, opts.testCmd) : null;
+  const test = testCapture?.visible ?? null;
 
   return {
+    subjectHash: subjectHashOf({
+      spec: opts.spec,
+      diff: rawDiff,
+      commitMessages,
+      transcript: transcriptRaw,
+      test: testCapture?.complete ?? null,
+    }),
     repo,
     base: baseSha,
     head,
@@ -196,7 +220,13 @@ export function writeEvidence(dir: string, ev: Evidence): void {
   writeFileSync(
     join(dir, "meta.json"),
     JSON.stringify(
-      { repo: ev.repo, base: ev.base, head: ev.head, truncated: ev.truncated },
+      {
+        repo: ev.repo,
+        base: ev.base,
+        head: ev.head,
+        subject_hash: ev.subjectHash,
+        truncated: ev.truncated,
+      },
       null,
       2,
     ) + "\n",

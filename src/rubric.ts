@@ -970,6 +970,7 @@ export async function runJudge(
 
   const verdictFile: VerdictFile = {
     schema: "gonogo/verdict@1",
+    subject_hash: ev.subjectHash,
     run_id: runId,
     task_id: opts.taskId ?? null,
     workspace_id: opts.workspaceId ?? null,
@@ -1052,6 +1053,7 @@ export async function runJudge(
     backend: backend.name,
     model_version: rubric.model,
     prompt_hashes: Object.fromEntries(promptFiles.map((f) => [f.path, f.sha256])),
+    subject_hash: ev.subjectHash,
     evidence_hash: rubricCall.key.evidenceHash,
     rater_id: `judge:${backend.name}`,
     scores: scoresOf(dims),

@@ -2,13 +2,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { collectEvidence } from "./evidence.ts";
+import { collectEvidence, writeEvidence } from "./evidence.ts";
+import { subjectHashOf } from "./subject.ts";
 
 const repos: string[] = [];
 
@@ -44,6 +46,63 @@ describe("collectEvidence untracked-file boundary", () => {
     // Preserve the v0.1 evidence contract: diffstat describes tracked changes,
     // while the complete patch and changed-files list carry untracked work.
     expect(evidence.diffStat).toBe("");
+    expect(evidence.subjectHash).toBe(subjectHashOf(evidence));
+  });
+
+  test("subject identity changes when only the elided middle of a diff changes", () => {
+    const path = repo();
+    const file = join(path, "large.txt");
+    writeFileSync(file, `${"a".repeat(6000)}X${"b".repeat(6000)}`);
+    const first = collectEvidence({ repo: path, base: "HEAD", spec: "test", maxDiffChars: 1000 });
+    writeFileSync(file, `${"a".repeat(6000)}Y${"b".repeat(6000)}`);
+    const second = collectEvidence({ repo: path, base: "HEAD", spec: "test", maxDiffChars: 1000 });
+
+    expect(first.truncated.diff).toBe(true);
+    expect(second.truncated.diff).toBe(true);
+    // Git exposes the changed blob identity in the patch header, but neither
+    // changed payload byte survives the bounded evidence rendering.
+    expect(first.diff).not.toContain("X");
+    expect(second.diff).not.toContain("Y");
+    expect(second.diff.replace(/^index .*$/m, "index <blob-ids>"))
+      .toBe(first.diff.replace(/^index .*$/m, "index <blob-ids>"));
+    expect(second.subjectHash).not.toBe(first.subjectHash);
+  });
+
+  test("writes subject identity with the persisted evidence metadata", () => {
+    const path = repo();
+    writeFileSync(join(path, "new.txt"), "new evidence\n");
+    const evidence = collectEvidence({ repo: path, base: "HEAD", spec: "test" });
+    const out = join(path, "artifact");
+    writeEvidence(out, evidence);
+    const meta = JSON.parse(readFileSync(join(out, "meta.json"), "utf8"));
+    expect(meta.subject_hash).toBe(evidence.subjectHash);
+  });
+
+  test("subject identity binds transcript and test bytes hidden by evidence elision", () => {
+    const path = repo();
+    const transcript = join(path, "session.txt");
+    const testOutput = join(path, "test-output.txt");
+    const excluded = [transcript, testOutput];
+    writeFileSync(transcript, `${"t".repeat(50_000)}X${"u".repeat(30_000)}`);
+    writeFileSync(testOutput, `${"a".repeat(15_000)}X${"b".repeat(15_000)}`);
+    const options = {
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      transcriptPath: transcript,
+      testCmd: "cat test-output.txt",
+      excludeUntrackedRoots: excluded,
+    };
+    const first = collectEvidence(options);
+    writeFileSync(transcript, `${"t".repeat(50_000)}Y${"u".repeat(30_000)}`);
+    writeFileSync(testOutput, `${"a".repeat(15_000)}Y${"b".repeat(15_000)}`);
+    const second = collectEvidence(options);
+
+    expect(first.truncated.transcript).toBe(true);
+    expect(first.transcript).toBe(second.transcript);
+    expect(first.test?.output).toBe(second.test?.output);
+    expect(first.diff).toBe(second.diff);
+    expect(first.subjectHash).not.toBe(second.subjectHash);
   });
 
   test("omits tool output below an absolute exclusion root", () => {
