@@ -176,6 +176,7 @@ function validateCitationRepair(
     "source",
     "prompt_sha256",
     "evidence_sha256",
+    "receipt_sha256",
     "requested_dimensions",
     "repaired_dimensions",
     "abstained_dimensions",
@@ -192,6 +193,7 @@ function validateCitationRepair(
   }
   sha256Field(repair.prompt_sha256, `${kind}.citation_repair.prompt_sha256`);
   sha256Field(repair.evidence_sha256, `${kind}.citation_repair.evidence_sha256`);
+  sha256Field(repair.receipt_sha256, `${kind}.citation_repair.receipt_sha256`);
   const requested = citationRepairDimensions(
     repair.requested_dimensions,
     `${kind}.citation_repair.requested_dimensions`,

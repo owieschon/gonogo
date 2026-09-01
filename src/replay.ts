@@ -85,6 +85,29 @@ export interface CacheEntry {
 
 export type CachePayload = Omit<CacheEntry, "schema" | "key" | "instrument_version">;
 
+/**
+ * Build the exact immutable receipt written by writeCache. Callers that retain
+ * a run-local sidecar use this builder so its digest cannot diverge from the
+ * replay artifact for the same provider call.
+ */
+export function buildCacheEntry(key: CacheKey, entry: CachePayload): CacheEntry {
+  return {
+    schema: CACHE_SCHEMA,
+    key: {
+      ...key,
+      promptHashFull: key.promptHash,
+      evidenceHashFull: key.evidenceHash,
+    },
+    ...entry,
+    instrument_version: key.instrumentVersion,
+  };
+}
+
+/** Canonical replay-receipt bytes: pretty JSON followed by one newline. */
+export function serializeCacheEntry(entry: CacheEntry): string {
+  return JSON.stringify(entry, null, 2) + "\n";
+}
+
 function parseEntry(path: string): CacheEntry {
   let raw: unknown;
   try {
@@ -184,22 +207,13 @@ export function writeCache(dir: string, key: CacheKey, entry: CachePayload): voi
 
   const path = entryPath(dir, key);
   mkdirSync(dirname(path), { recursive: true });
-  const full: CacheEntry = {
-    schema: CACHE_SCHEMA,
-    key: {
-      ...key,
-      promptHashFull: key.promptHash,
-      evidenceHashFull: key.evidenceHash,
-    },
-    ...entry,
-    instrument_version: key.instrumentVersion,
-  };
+  const full = buildCacheEntry(key, entry);
 
   const temp = join(dirname(path), `.${randomBytes(12).toString("hex")}.tmp`);
   let fd: number | undefined;
   try {
     fd = openSync(temp, "wx", 0o600);
-    writeFileSync(fd, JSON.stringify(full, null, 2) + "\n");
+    writeFileSync(fd, serializeCacheEntry(full));
     fsyncSync(fd);
     closeSync(fd);
     fd = undefined;

@@ -6,8 +6,8 @@
  * the log. That indirection is deliberate — the log is the substrate, and a
  * reporting path that bypassed it would be a second source of truth.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { DIMENSIONS } from "./types.ts";
 import type { Dimension } from "./types.ts";
 import { collectEvidence } from "./evidence.ts";
@@ -17,6 +17,8 @@ import { readEvents, isJudgeEvent } from "./events.ts";
 import type { JudgeEvent } from "./events.ts";
 import { listFixtures, materialize, type Fixture } from "./fixtures.ts";
 import { GONOGO_VERSION } from "./version.ts";
+import { serializeCacheEntry } from "./replay.ts";
+import type { CacheEntry } from "./replay.ts";
 
 export interface EvalOptions {
   fixturesDir: string;
@@ -40,9 +42,29 @@ function runIdFor(fixture: string, k: number, stamp: string): string {
   return `eval-${stamp}-${fixture}-k${k}`;
 }
 
+/**
+ * Live eval without --record still retains a complete repair-call receipt.
+ * Recorded and replayed sweeps already have the canonical global receipt.
+ */
+export function evalCitationRepairReceiptSink(
+  options: Pick<EvalOptions, "eventsPath" | "record" | "replay">,
+  runId: string,
+): ((receipt: CacheEntry) => void) | undefined {
+  if (options.record || options.replay) return undefined;
+  return (receipt) => {
+    const evidenceDir = join(dirname(options.eventsPath), "runs", runId, "evidence");
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(
+      join(evidenceDir, "citation-repair-receipt.json"),
+      serializeCacheEntry(receipt),
+    );
+  };
+}
+
 async function oneRun(fx: Fixture, k: number, stamp: string, o: EvalOptions): Promise<void> {
   const m = materialize(fx);
   try {
+    const runId = runIdFor(fx.name, k, stamp);
     const ev = collectEvidence({
       repo: m.repo,
       base: m.base,
@@ -55,9 +77,10 @@ async function oneRun(fx: Fixture, k: number, stamp: string, o: EvalOptions): Pr
       replayDir: o.replay ? o.cacheDir : undefined,
       recordDir: o.record ? o.cacheDir : undefined,
       eventsPath: o.eventsPath,
-      runId: runIdFor(fx.name, k, stamp),
+      runId,
       kind: "fixture",
       fixtureId: fx.name,
+      onCitationRepairReceipt: evalCitationRepairReceiptSink(o, runId),
     });
   } finally {
     m.cleanup();

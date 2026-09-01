@@ -36,6 +36,10 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   extracts the object and escapes only those characters. New rubric and
   citation-repair calls use Claude's structured-output contract; malformed or
   schema-invalid output is a terminal tool error and never triggers a rerating.
+  Every attempted repair also gets a run-local `gonogo/replay@2` sidecar before
+  validation, independent of the optional global replay cache. Its digest binds
+  verdict and event provenance to the exact response and per-call model, cost,
+  tokens, latency and cache key.
 - **CI runs `gonogo eval --replay`, not a live judge.** A live run needs an
   authenticated `claude` CLI, which a public repo has no way to provide. The
   workflow comment says plainly what replay does and does not catch — notably

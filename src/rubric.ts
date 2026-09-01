@@ -19,8 +19,15 @@ import { GONOGO_VERSION } from "./version.ts";
 import { blindAttachments, blindPacket } from "./blind.ts";
 import { DRIFT_TYPES, EVENT_SCHEMA_VERSION, appendEvent, scoresOf } from "./events.ts";
 import type { DriftType, Disclosure, JudgeEvent } from "./events.ts";
-import { describeMiss, hashOf, readCache, writeCache } from "./replay.ts";
-import type { CacheKey } from "./replay.ts";
+import {
+  buildCacheEntry,
+  describeMiss,
+  hashOf,
+  readCache,
+  serializeCacheEntry,
+  writeCache,
+} from "./replay.ts";
+import type { CacheEntry, CacheKey, CachePayload } from "./replay.ts";
 
 export function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -579,6 +586,8 @@ function evidenceAttachments(ev: Evidence): Attachment[] {
 export interface JudgeRunResult {
   verdictFile: VerdictFile;
   raw: { blind: string; rubric: string; citation_repair?: string };
+  /** Run-local receipt for the citation-only call; absent when no repair ran. */
+  citationRepairReceipt?: CacheEntry;
   event: JudgeEvent;
 }
 
@@ -599,6 +608,8 @@ export interface RunJudgeOptions {
   taskId?: string | null;
   workspaceId?: string | null;
   disclosure?: Disclosure;
+  /** Called synchronously after a repair response is obtained and before it is parsed. */
+  onCitationRepairReceipt?: (receipt: CacheEntry) => void;
 }
 
 /** Stable identity for one evidence packet, used as the replay cache key. */
@@ -610,6 +621,8 @@ interface CachedCall {
   response: JudgeResponse;
   key: CacheKey;
   fromCache: boolean;
+  /** Exact replay receipt on a cache hit. */
+  cacheEntry?: CacheEntry;
 }
 
 interface StructuredCall {
@@ -664,6 +677,7 @@ async function call(
     return {
       key,
       fromCache: true,
+      cacheEntry: hit,
       response: {
         text: hit.text,
         model: hit.model_version,
@@ -686,23 +700,39 @@ async function call(
   };
 }
 
+function cachePayload(
+  backend: JudgeBackend,
+  response: JudgeResponse,
+  recordedAt = new Date().toISOString(),
+): CachePayload {
+  return {
+    recorded_at: recordedAt,
+    model_version: response.model,
+    backend: backend.name,
+    latency_ms: response.durationMs,
+    cost_usd: response.costUsd,
+    tokens_in: response.tokensIn,
+    tokens_out: response.tokensOut,
+    text: response.text,
+  };
+}
+
+function callReceipt(backend: JudgeBackend, callResult: CachedCall): CacheEntry {
+  return (
+    callResult.cacheEntry ??
+    buildCacheEntry(callResult.key, cachePayload(backend, callResult.response))
+  );
+}
+
 function record(
   opts: RunJudgeOptions,
   backend: JudgeBackend,
   key: CacheKey,
   r: JudgeResponse,
+  receipt?: CacheEntry,
 ): void {
   if (!opts.recordDir) return;
-  writeCache(opts.recordDir, key, {
-    recorded_at: new Date().toISOString(),
-    model_version: r.model,
-    backend: backend.name,
-    latency_ms: r.durationMs,
-    cost_usd: r.costUsd,
-    tokens_in: r.tokensIn,
-    tokens_out: r.tokensOut,
-    text: r.text,
-  });
+  writeCache(opts.recordDir, key, cachePayload(backend, r, receipt?.recorded_at));
 }
 
 export async function runJudge(
@@ -784,6 +814,8 @@ export async function runJudge(
     rubricAttachments,
   );
   let citationRepairCall: CachedCall | undefined;
+  let citationRepairReceipt: CacheEntry | undefined;
+  let citationRepairReceiptSha256: string | undefined;
   let repairedDimensions: RubricResultName[] = [];
   let repairAbstentions: RubricResultName[] = [];
   if (citationFailures.length > 0) {
@@ -801,15 +833,25 @@ export async function runJudge(
       opts,
       citationRepairStructured,
     );
+    // Retain the provider/cache reply before any parser or validator can
+    // reject it. The callback lets the CLI persist the same immutable bytes
+    // even when this Promise subsequently rejects on malformed output.
+    citationRepairReceipt = callReceipt(backend, citationRepairCall);
+    citationRepairReceiptSha256 = sha256(serializeCacheEntry(citationRepairReceipt));
+    opts.onCitationRepairReceipt?.(citationRepairReceipt);
+    if (!citationRepairCall.fromCache) {
+      record(
+        opts,
+        backend,
+        citationRepairCall.key,
+        citationRepairCall.response,
+        citationRepairReceipt,
+      );
+    }
     const repairOutput = parseStructuredCitationRepair(
       citationRepairCall.response.text,
       citationRepairStructured.schema,
     );
-    // A schema-valid repair gets its own immutable receipt even when its exact
-    // dimension set or evidence grounding later fails closed.
-    if (!citationRepairCall.fromCache) {
-      record(opts, backend, citationRepairCall.key, citationRepairCall.response);
-    }
     try {
       const applied = applyCitationRepair(
         parsed,
@@ -931,6 +973,7 @@ export async function runJudge(
             source: citationRepairCall.fromCache ? "cache" : "live",
             prompt_sha256: citationRepairCall.key.promptHash,
             evidence_sha256: citationRepairCall.key.evidenceHash,
+            receipt_sha256: citationRepairReceiptSha256!,
             requested_dimensions: citationFailures,
             repaired_dimensions: repairedDimensions,
             abstained_dimensions: repairAbstentions,
@@ -983,6 +1026,7 @@ export async function runJudge(
       rubric: rubric.text,
       ...(citationRepairCall ? { citation_repair: citationRepairCall.response.text } : {}),
     },
+    ...(citationRepairReceipt ? { citationRepairReceipt } : {}),
     event,
   };
 }

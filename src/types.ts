@@ -66,6 +66,8 @@ export interface CitationRepair {
   source: JudgePassSource;
   prompt_sha256: string;
   evidence_sha256: string;
+  /** Digest of the canonical run-local gonogo/replay@2 call receipt. */
+  receipt_sha256: string;
   requested_dimensions: CitationRepairDimension[];
   repaired_dimensions: CitationRepairDimension[];
   abstained_dimensions: CitationRepairDimension[];

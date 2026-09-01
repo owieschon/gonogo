@@ -391,6 +391,7 @@ describe("event log", () => {
       source: "live",
       prompt_sha256: "e".repeat(64),
       evidence_sha256: "f".repeat(64),
+      receipt_sha256: "1".repeat(64),
       requested_dimensions: ["task_satisfaction", "scope_discipline"],
       repaired_dimensions: ["task_satisfaction"],
       abstained_dimensions: ["scope_discipline"],
@@ -424,6 +425,9 @@ describe("event log", () => {
     expect(() => migrateEvent(mutate({ source: "remote" }))).toThrow("source must be live or cache");
     expect(() => migrateEvent(mutate({ prompt_sha256: "not-a-hash" }))).toThrow(
       "64-character SHA-256",
+    );
+    expect(() => migrateEvent(mutate({ receipt_sha256: "not-a-hash" }))).toThrow(
+      "citation_repair.receipt_sha256 must be a lowercase 64-character SHA-256 hex digest",
     );
     expect(() => migrateEvent(mutate({ requested_dimensions: [] }))).toThrow("must not be empty");
     expect(() => migrateEvent(mutate({ requested_dimensions: ["charisma"] }))).toThrow(
@@ -509,6 +513,7 @@ describe("event log", () => {
     const repairedHtml = renderHtml(artifact);
     expect(repairedHtml).toContain("the original scores were frozen");
     expect(repairedHtml).toContain("safe abstentions");
+    expect(repairedHtml).toContain(`receipt ${"1".repeat(16)}`);
     expect(repairedHtml).toContain("citation repair: live judge");
     expect(repairedHtml).toContain("partial cache");
     expect(repairedHtml).not.toContain("no judge was invoked");

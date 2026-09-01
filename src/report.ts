@@ -82,7 +82,7 @@ function citationRepairRow(p: VerdictFile["provenance"]): string {
     `<span class="mono">${esc(abstained)}</span>.<br>` +
     `<span class="mono">prompt ${esc(repair.prompt_sha256.slice(0, 16))} · evidence ${esc(
       repair.evidence_sha256.slice(0, 16),
-    )}</span></td></tr>`;
+    )} · receipt ${esc(repair.receipt_sha256.slice(0, 16))}</span></td></tr>`;
 }
 
 function dimensionBlock(name: string, d: DimensionResult, blurb: string): string {

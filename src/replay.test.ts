@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readCache, writeCache } from "./replay.ts";
-import type { CacheKey, CachePayload } from "./replay.ts";
+import { readCache, serializeCacheEntry, writeCache } from "./replay.ts";
+import type { CacheEntry, CacheKey, CachePayload } from "./replay.ts";
 import { renderHtml } from "./report.ts";
-import { runJudge } from "./rubric.ts";
+import { runJudge, sha256 } from "./rubric.ts";
 import type {
   Attachment,
   JudgeBackend,
@@ -429,7 +429,10 @@ describe("rubric response validation", () => {
       ]),
     ]);
 
-    const result = await runJudge(ev, backend, prompts);
+    const repairReceipts: CacheEntry[] = [];
+    const result = await runJudge(ev, backend, prompts, {
+      onCitationRepairReceipt: (receipt) => repairReceipts.push(receipt),
+    });
     expect(backend.calls.map((call) => call.promptFile.split("/").at(-1))).toEqual([
       "blind-pass.md",
       "rubric-pass.md",
@@ -437,6 +440,68 @@ describe("rubric response validation", () => {
     ]);
     expect(backend.calls.map((call) => call.structured)).toEqual([false, true, true]);
     expect(result.raw.rubric).toBe(frozenText);
+    expect(result.raw.citation_repair).toBe(
+      JSON.stringify({
+        repairs: [
+          {
+            dimension: "scope_discipline",
+            status: "repaired",
+            citations: ["+first hard-wrapped line"],
+          },
+        ],
+      }),
+    );
+    expect(repairReceipts).toHaveLength(1);
+    expect(result.citationRepairReceipt).toEqual(repairReceipts[0]);
+    expect(result.citationRepairReceipt).toMatchObject({
+      schema: "gonogo/replay@2",
+      key: {
+        sample: 1,
+        backend: "queue-backend",
+        instrumentVersion: "0.1.4",
+        model: "queue-model",
+      },
+      model_version: "repair-model",
+      backend: "queue-backend",
+      instrument_version: "0.1.4",
+      latency_ms: 1,
+      cost_usd: 0.1,
+      tokens_in: 10,
+      tokens_out: 2,
+      text: result.raw.citation_repair,
+    });
+    expect(Object.keys(result.citationRepairReceipt!).sort()).toEqual([
+      "backend",
+      "cost_usd",
+      "instrument_version",
+      "key",
+      "latency_ms",
+      "model_version",
+      "recorded_at",
+      "schema",
+      "text",
+      "tokens_in",
+      "tokens_out",
+    ]);
+    expect(Object.keys(result.citationRepairReceipt!.key).sort()).toEqual([
+      "backend",
+      "evidenceHash",
+      "evidenceHashFull",
+      "instrumentVersion",
+      "model",
+      "promptHash",
+      "promptHashFull",
+      "sample",
+    ]);
+    expect(result.citationRepairReceipt!.key.promptHashFull).toBe(
+      result.citationRepairReceipt!.key.promptHash,
+    );
+    expect(result.citationRepairReceipt!.key.evidenceHashFull).toBe(
+      result.citationRepairReceipt!.key.evidenceHash,
+    );
+    expect(result.verdictFile.provenance.citation_repair?.receipt_sha256).toBe(
+      sha256(serializeCacheEntry(result.citationRepairReceipt!)),
+    );
     const repairAttachments = backend.calls[2]!.attachments;
     expect(repairAttachments.find((item) => item.name === "FROZEN_RUBRIC_JSON")?.content).toBe(
       frozenText,
@@ -664,13 +729,23 @@ describe("rubric response validation", () => {
         ], "must-not-be-called"),
       ]);
 
-      await expect(runJudge(evidence(), backend, prompts, { recordDir: cache })).rejects.toThrow(
+      const repairReceipts: unknown[] = [];
+      await expect(runJudge(evidence(), backend, prompts, {
+        recordDir: cache,
+        onCitationRepairReceipt: (receipt) => repairReceipts.push(receipt),
+      })).rejects.toThrow(
         /citation-repair/,
       );
       expect(backend.calls).toHaveLength(3);
-      // Blind and frozen rubric are recorded. The repair is not recorded until
-      // it satisfies its structured-output contract.
-      expect(filesBelow(cache)).toHaveLength(2);
+      expect(repairReceipts).toHaveLength(1);
+      expect(repairReceipts[0]).toMatchObject({
+        schema: "gonogo/replay@2",
+        model_version: "repair-model",
+        text: reply.text,
+      });
+      // Blind, frozen rubric, and the billed repair attempt are all retained,
+      // even though the repair itself is a terminal structured-output error.
+      expect(filesBelow(cache)).toHaveLength(3);
     }
   });
 
@@ -684,10 +759,17 @@ describe("rubric response validation", () => {
       rubricReply(abstained, "rubric-model"),
     ]);
 
-    const result = await runJudge(evidence(), backend, prompts);
+    let repairCallbackCalled = false;
+    const result = await runJudge(evidence(), backend, prompts, {
+      onCitationRepairReceipt: () => {
+        repairCallbackCalled = true;
+      },
+    });
     expect(backend.calls).toHaveLength(2);
     expect(result.verdictFile.dimensions.claim_verification.score).toBe("abstain");
     expect(result.verdictFile.provenance.citation_repair).toBeNull();
+    expect(result.citationRepairReceipt).toBeUndefined();
+    expect(repairCallbackCalled).toBe(false);
   });
 
   test("strict replay reads all three receipts and never falls through to live", async () => {
@@ -716,7 +798,11 @@ describe("rubric response validation", () => {
     await runJudge(evidence(), recorder, prompts, { recordDir: cache });
 
     const replay = new QueueBackend([]);
-    const result = await runJudge(evidence(), replay, prompts, { replayDir: cache });
+    const repairReceipts: unknown[] = [];
+    const result = await runJudge(evidence(), replay, prompts, {
+      replayDir: cache,
+      onCitationRepairReceipt: (receipt) => repairReceipts.push(receipt),
+    });
     expect(replay.calls).toHaveLength(0);
     expect(result.event.replay).toBe(true);
     expect(result.verdictFile.provenance.replayed).toBe(true);
@@ -724,6 +810,14 @@ describe("rubric response validation", () => {
     expect(result.event.tokens_in).toBe(30);
     expect(result.event.tokens_out).toBe(6);
     expect(result.verdictFile.provenance.citation_repair?.source).toBe("cache");
+    expect(repairReceipts).toEqual([result.citationRepairReceipt]);
+    expect(result.citationRepairReceipt).toMatchObject({
+      schema: "gonogo/replay@2",
+      model_version: "repair-model",
+      cost_usd: 0.1,
+      tokens_in: 10,
+      tokens_out: 2,
+    });
   });
 
   test("a missing strict-replay repair receipt fails, while record-on-miss invokes only repair", async () => {
@@ -764,7 +858,11 @@ describe("rubric response validation", () => {
     expect(strict.calls).toHaveLength(0);
 
     const refill = new QueueBackend([repair]);
-    const mixed = await runJudge(evidence(), refill, prompts, { recordDir: cache });
+    const repairReceipts: unknown[] = [];
+    const mixed = await runJudge(evidence(), refill, prompts, {
+      recordDir: cache,
+      onCitationRepairReceipt: (receipt) => repairReceipts.push(receipt),
+    });
     expect(refill.calls).toHaveLength(1);
     expect(refill.calls[0]!.promptFile.endsWith("citation-repair.md")).toBe(true);
     expect(mixed.verdictFile.provenance.pass_sources).toEqual({
@@ -776,6 +874,14 @@ describe("rubric response validation", () => {
     expect(mixed.verdictFile.provenance.cost_usd).toBeCloseTo(0.1);
     expect(mixed.event.tokens_in).toBe(10);
     expect(mixed.event.tokens_out).toBe(2);
+    expect(repairReceipts).toEqual([mixed.citationRepairReceipt]);
+    expect(mixed.citationRepairReceipt).toMatchObject({
+      model_version: "repair-model",
+      latency_ms: 1,
+      cost_usd: 0.1,
+      tokens_in: 10,
+      tokens_out: 2,
+    });
     expect(filesBelow(cache)).toHaveLength(3);
     const mixedHtml = renderHtml(mixed.verdictFile);
     expect(mixedHtml).toContain("citation-only pass");
