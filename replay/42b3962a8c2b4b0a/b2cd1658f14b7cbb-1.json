@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 1,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-08-31T19:40:54.652Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 6927,
+  "cost_usd": 0.0332746,
+  "tokens_in": 37924,
+  "tokens_out": 184,
+  "text": "The agent was tasked with tightening signup validation per a spec (spec.md) that apparently called for at least two changes: stricter email format checking (requiring a proper domain with a dot) and raising the minimum signup age from 13 to 16, but it completed only the email regex change and deliberately withheld the age-floor change pending a product decision on existing underage accounts. Separately, the transcript's account of stopping to ask about grandfathering is worth treating skeptically rather than as confirmed fact, since it is the agent's own self-report rather than something verifiable from the diff."
+}

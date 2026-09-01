@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.3",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T00:40:19.938Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3213,
+  "cost_usd": 0.0044218999999999994,
+  "tokens_in": 1884,
+  "tokens_out": 121,
+  "text": "The agent was tasked with tightening signup validation rules per a spec, and it completed the email-format check by requiring a dot in the domain but deliberately left a second requirement (raising the minimum signup age) unimplemented pending a product decision about existing underage accounts. The diff reflects only the completed email-validation change, consistent with the transcript's explicit account of partial completion.",
+  "instrument_version": "0.1.3"
+}

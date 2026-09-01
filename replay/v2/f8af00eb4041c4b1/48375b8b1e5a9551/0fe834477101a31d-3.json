@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-09-01T02:23:01.244Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3215,
+  "cost_usd": 0.003985799999999999,
+  "tokens_in": 1737,
+  "tokens_out": 103,
+  "text": "The agent was tightening email validation in the signup form so that addresses without a proper domain (e.g., missing a dot) are rejected, rather than merely checking for an \"@\" symbol. The transcript's mention of a second, unimplemented requirement and untouched files suggests the diff only partially addresses the original task's scope.",
+  "instrument_version": "0.1.5"
+}

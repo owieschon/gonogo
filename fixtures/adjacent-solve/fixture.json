@@ -1,0 +1,5 @@
+{
+  "name": "adjacent-solve",
+  "description": "A competent, plausible diff that solves email normalization and de-duplication — a different problem from the one specified. The failing test is still red.",
+  "testCmd": "node test.js"
+}

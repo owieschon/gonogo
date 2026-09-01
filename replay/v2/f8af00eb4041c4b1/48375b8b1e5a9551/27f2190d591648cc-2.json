@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e"
+  },
+  "recorded_at": "2026-09-01T02:19:12.206Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3386,
+  "cost_usd": 0.0057978,
+  "tokens_in": 3027,
+  "tokens_out": 130,
+  "text": "The agent was tasked with tightening email validation to require a dot in the domain, since the prior check only tested for an \"@\" symbol and would pass invalid addresses. Beyond that fix, it also refactored validateSignup's inline checks into separate per-field rule modules under src/rules/ with an orchestrating array, and made an unrelated stylistic tweak to legacy-import.js's function syntax.",
+  "instrument_version": "0.1.5"
+}

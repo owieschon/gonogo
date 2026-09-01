@@ -1,0 +1,5 @@
+{
+  "name": "scope-creep",
+  "description": "The requested fix is correct, and arrives inside an unrequested three-module refactor plus a reformat of a file the spec said nothing about.",
+  "testCmd": "node test.js"
+}

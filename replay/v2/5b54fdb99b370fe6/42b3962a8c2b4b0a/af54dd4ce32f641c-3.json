@@ -1,0 +1,21 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.2",
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715"
+  },
+  "recorded_at": "2026-09-01T00:03:27.961Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5277,
+  "cost_usd": 0.0108708,
+  "tokens_in": 37806,
+  "tokens_out": 137,
+  "text": "The agent tightened email validation in `src/validate.js`, replacing a naive `.includes(\"@\")` check with a regex requiring a dot-bearing domain, so that addresses like `ada@localhost` are correctly rejected during signup validation. The transcript's claim of following \"spec.md\" cannot be verified from the diff alone, but the change itself is narrowly scoped and consistent with fixing that specific validation gap.",
+  "instrument_version": "0.1.2"
+}

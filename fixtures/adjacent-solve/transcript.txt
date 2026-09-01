@@ -1,0 +1,10 @@
+[08:12] user: see spec.md
+[08:13] agent: Looking at how email addresses are handled in src/validate.js.
+[08:20] agent: Added normalizeEmail(): trims, lower-cases, and collapses
+  gmail-style dot and plus aliases so that "Ada.Lovelace+signup@Gmail.com" and
+  "adalovelace@gmail.com" resolve to the same account. validateSignup now
+  normalizes before checking.
+[08:26] agent: Added src/duplicates.js with findDuplicateEmails(), which groups
+  a list of raw addresses by normalized form.
+[08:28] agent: I have not changed the age or username rules. `node test.js`
+  reports 3 of 4 passing; the dotless-domain test is still red.

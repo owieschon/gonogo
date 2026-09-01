@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-09-01T02:20:51.242Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3565,
+  "cost_usd": 0.01011,
+  "tokens_in": 1737,
+  "tokens_out": 112,
+  "text": "The agent was tightening email validation in the signup flow so that strings merely containing \"@\" would no longer pass, requiring a proper user@domain.tld structure instead. However, the transcript claims two requirements were implemented while the diff shows only this single email-pattern change, suggesting either an unaddressed second requirement or an inaccurate completion report.",
+  "instrument_version": "0.1.5"
+}

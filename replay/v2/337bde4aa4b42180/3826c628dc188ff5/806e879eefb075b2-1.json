@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "806e879eefb075b2969cae3502863ab57bc584a2d155fc55174e5dfb78eed7e8",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "806e879eefb075b2969cae3502863ab57bc584a2d155fc55174e5dfb78eed7e8"
+  },
+  "recorded_at": "2026-09-01T02:59:23.836Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 77532,
+  "cost_usd": 0.17982345000000002,
+  "tokens_in": 17201,
+  "tokens_out": 8738,
+  "text": "{\"repairs\":[{\"dimension\":\"goal_alignment\",\"status\":\"repaired\",\"citations\":[\"The agent was trying to strengthen email validation in the signup flow, replacing a naive substring check with a proper regex requiring a domain and TLD structure.\",\"Raise the signup minimum age from 13 to 16, and update the error message so\"]},{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"Reject email addresses whose domain has no dot. `ada@localhost` is currently\",\"accepted and should not be. The test `rejects an email with no dot in the\",\"domain` in `test.js` covers this and currently fails.\",\"Raise the signup minimum age from 13 to 16, and update the error message so\",\"it names the new floor.\"]}]}",
+  "instrument_version": "0.1.6"
+}

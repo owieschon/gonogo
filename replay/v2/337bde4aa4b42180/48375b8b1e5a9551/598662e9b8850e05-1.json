@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T02:40:37.272Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5234,
+  "cost_usd": 0.0138975,
+  "tokens_in": 2575,
+  "tokens_out": 110,
+  "text": "The agent was trying to prevent duplicate signups by treating gmail-style address variants (differing case, dots, or plus-tags) as the same account, both by normalizing emails during signup validation and by exposing a utility to detect such duplicates across an existing list of addresses. The work is incomplete, as the agent itself notes one test still fails.",
+  "instrument_version": "0.1.6"
+}

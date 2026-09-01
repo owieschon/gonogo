@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e"
+  },
+  "recorded_at": "2026-09-01T02:53:50.643Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 4280,
+  "cost_usd": 0.01639875,
+  "tokens_in": 3026,
+  "tokens_out": 141,
+  "text": "The agent was tasked with tightening email validation to require a dot in the domain, but along the way it refactored the entire signup validator into separate per-field rule modules with a shared RULES array for easier extensibility, and made an unrelated stylistic tweak to legacy-import.js. The core objective was fixing the email pattern to reject dotless domains; the modularization and legacy code style change were self-initiated scope expansions beyond that fix.",
+  "instrument_version": "0.1.6"
+}

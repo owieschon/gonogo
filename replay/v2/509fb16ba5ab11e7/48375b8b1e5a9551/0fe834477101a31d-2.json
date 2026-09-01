@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-09-01T01:44:37.150Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3637,
+  "cost_usd": 0.0040122000000000005,
+  "tokens_in": 1725,
+  "tokens_out": 105,
+  "text": "The agent was tightening email validation in a signup form so that clearly malformed addresses (missing \"@\" or a domain dot) are rejected rather than accepted by the loose substring check. The transcript's claim of implementing \"both requirements\" suggests a second task item was expected but not reflected in the diff, which touches only the email regex.",
+  "instrument_version": "0.1.4"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.3",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e"
+  },
+  "recorded_at": "2026-09-01T00:47:16.376Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 10195,
+  "cost_usd": 0.01617375,
+  "tokens_in": 3014,
+  "tokens_out": 129,
+  "text": "The agent was tightening email validation to require a proper domain with a dot, which surfaced a bug in the old inline check, and along the way refactored the monolithic signup validator into per-field rule modules for easier extension; it also made a cosmetic tweak to legacy-import.js unrelated to validation. The core objective was fixing the email format rule while incidentally restructuring validation logic for maintainability.",
+  "instrument_version": "0.1.3"
+}

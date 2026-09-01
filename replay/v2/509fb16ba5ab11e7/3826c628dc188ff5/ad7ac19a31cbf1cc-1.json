@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "ad7ac19a31cbf1cc227177e776e008a8bd577936fa6e9b97aebf21e030a60bb7",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "ad7ac19a31cbf1cc227177e776e008a8bd577936fa6e9b97aebf21e030a60bb7"
+  },
+  "recorded_at": "2026-09-01T01:34:25.300Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 31158,
+  "cost_usd": 0.08069045000000001,
+  "tokens_in": 12235,
+  "tokens_out": 3425,
+  "text": "{\"repairs\":[{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"Two changes to `src/validate.js`:\",\"The test `rejects an email with no dot in the\",\"in `test.js` covers this and currently fails.\",\"2. Raise the signup minimum age from 13 to 16, and update the error message so\",\"Do not change `test.js`. Leave `src/legacy-import.js` alone\"]}]}",
+  "instrument_version": "0.1.4"
+}
