@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-09-01T01:45:29.406Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3469,
+  "cost_usd": 0.0041622,
+  "tokens_in": 1725,
+  "tokens_out": 115,
+  "text": "The agent was trying to tighten email validation in the signup flow, replacing a weak substring check with a proper regex requiring a domain and TLD structure. The transcript's mention of \"both requirements\" and untouched files (test.js, legacy-import.js) suggests a second, unaddressed requirement from the unseen spec that isn't reflected in this diff.",
+  "instrument_version": "0.1.4"
+}

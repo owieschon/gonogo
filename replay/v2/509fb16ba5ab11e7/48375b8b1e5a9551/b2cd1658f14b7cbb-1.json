@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T01:33:11.178Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3423,
+  "cost_usd": 0.010997,
+  "tokens_in": 1885,
+  "tokens_out": 126,
+  "text": "The agent was tasked with tightening signup validation rules per a spec, replacing a weak email check with a stricter regex requiring a proper domain format, and also raising the minimum signup age from 13 to 16. It completed the email validation change but deliberately left the age requirement untouched, flagging that the policy decision on how to handle existing 13-15 year old accounts needed product input before implementation.",
+  "instrument_version": "0.1.4"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-09-01T01:43:33.247Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3379,
+  "cost_usd": 0.01068,
+  "tokens_in": 1725,
+  "tokens_out": 153,
+  "text": "The agent was trying to strengthen email validation in the signup flow, replacing a naive substring check (`includes(\"@\")`) with a proper regex that also requires a domain with a dot, to reject clearly invalid addresses. The transcript's mention of a second, unaddressed \"requirement\" and untouched files (test.js, legacy-import.js) suggests the spec may have called for additional changes beyond this single-file email fix, though the diff itself only shows this one objective being completed.",
+  "instrument_version": "0.1.4"
+}
