@@ -541,13 +541,19 @@ const GAMING_SOURCE_NAMES = new Set(["DIFF", "COMMIT_MESSAGES", "TRANSCRIPT"]);
 
 /**
  * Repair one observed transcript-rendering quirk and nothing broader: a
- * single ASCII space in a one-line quote may stand for one continuation
- * boundary emitted as a newline followed by two spaces. Every other byte must
- * already agree, and the resulting source span must be unique.
+ * single ASCII space may stand for one continuation boundary emitted as a
+ * newline followed by two spaces. Existing LF/CRLF bytes and every other byte
+ * must already agree, and the resulting source occurrence must be unique.
  */
 function transcriptContinuationCandidates(quote: string, transcripts: Attachment[]): string[] {
-  if (quote.trim() === "" || quote !== quote.trim() || quote.includes("\n") || quote.includes("\r")) {
+  if (quote.trim() === "" || quote !== quote.trim()) {
     return [];
+  }
+
+  // A bare CR is not an existing LF/CRLF boundary that can be preserved.
+  for (let index = 0; index < quote.length; index++) {
+    if (quote[index] === "\r" && quote[index + 1] !== "\n") return [];
+    if (quote[index] === "\r") index++;
   }
 
   const candidates: string[] = [];
