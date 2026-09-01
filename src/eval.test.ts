@@ -12,6 +12,7 @@ import {
 } from "./eval.ts";
 import { buildCacheEntry, serializeCacheEntry } from "./replay.ts";
 import type { Dimension } from "./types.ts";
+import { GONOGO_VERSION } from "./version.ts";
 
 const FLOORS: EvalQualityFloors = {
   dimensions: {
@@ -113,20 +114,21 @@ test("a selected fixture set with no drift labels skips only that metric", () =>
   expect(result.receipt).toContain("[SKIP] labelled drift");
 });
 
-test("the checked-in 0.1.4 threshold policy is complete", () => {
+test("the checked-in threshold policy is complete and matches the verified baseline", () => {
   expect(loadEvalQualityFloors(join(import.meta.dir, "..", "fixtures"))).toEqual(FLOORS);
 });
 
 test("threshold policy parsing fails closed on version, shape, and range errors", () => {
   const valid = {
     schema: "gonogo/eval-thresholds@1",
-    gonogo_version: "0.1.4",
+    gonogo_version: GONOGO_VERSION,
     min_dimension_accuracy: { ...FLOORS.dimensions },
     min_verdict_accuracy: FLOORS.verdict,
     min_drift_accuracy: FLOORS.labelledDrift,
   };
-  expect(() => parseEvalQualityFloors({ ...valid, gonogo_version: "0.1.0" })).toThrow(
-    "expected 0.1.4",
+  // Referenced, not hardcoded: a version bump must not silently break this test.
+  expect(() => parseEvalQualityFloors({ ...valid, gonogo_version: "0.0.0-not-the-instrument" })).toThrow(
+    `expected ${GONOGO_VERSION}`,
   );
   const missing = { ...valid, min_dimension_accuracy: { ...valid.min_dimension_accuracy } };
   delete (missing.min_dimension_accuracy as Partial<Record<Dimension, number>>).goal_alignment;
