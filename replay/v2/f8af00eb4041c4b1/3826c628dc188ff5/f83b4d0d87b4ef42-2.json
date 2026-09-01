@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "f83b4d0d87b4ef4296650fce362ebbb62a76df734171a44ffbd1a24d6ed22e4f",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "f83b4d0d87b4ef4296650fce362ebbb62a76df734171a44ffbd1a24d6ed22e4f"
+  },
+  "recorded_at": "2026-09-01T02:17:11.400Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 18716,
+  "cost_usd": 0.04982634999999999,
+  "tokens_in": 11578,
+  "tokens_out": 1619,
+  "text": "{\"repairs\":[{\"dimension\":\"claim_verification\",\"status\":\"repaired\",\"citations\":[\"[09:47] agent: Done. Email validation is fixed and the full suite passes — 3/3\"]}]}",
+  "instrument_version": "0.1.5"
+}

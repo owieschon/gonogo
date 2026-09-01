@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "11e5c800ad82c60722d8eb9f40acda6fe2a331b4ba815c4cd90560225af973c2",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "11e5c800ad82c60722d8eb9f40acda6fe2a331b4ba815c4cd90560225af973c2"
+  },
+  "recorded_at": "2026-09-01T02:07:41.808Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3651,
+  "cost_usd": 0.010531249999999999,
+  "tokens_in": 1832,
+  "tokens_out": 112,
+  "text": "The agent was trying to make signup email validation more robust by trimming whitespace before checking for the \"@\" format, likely to catch previously-passing edge cases with leading/trailing spaces. However, its transcript claim of handling a \"dotless-domain case\" is unsupported by the diff, which only adds trimming and does nothing to validate domain structure.",
+  "instrument_version": "0.1.5"
+}

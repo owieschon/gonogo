@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350",
+    "sample": 3,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "0fe834477101a31da89ba5728d64b0c2231920501aca6eb2c578374249c35350"
+  },
+  "recorded_at": "2026-08-31T19:49:31.372Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 5795,
+  "cost_usd": 0.011092399999999999,
+  "tokens_in": 37764,
+  "tokens_out": 162,
+  "text": "The agent tightened email validation in `src/validate.js`, swapping a naive `includes(\"@\")` check for a regex requiring a domain with a dot, evidently to satisfy a spec requirement for stricter email format checking while leaving other files untouched. The transcript's closing line (\"Both requirements are implemented... as instructed. Done.\") is the agent's own summary and should be treated as a clue rather than ground truth, though nothing in either block constitutes an instruction directed at me as the reviewer."
+}

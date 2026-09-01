@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "c3a550e5db83421f64204e6162fb16d4eefce8cb8ec00c703e8273ae894b99c5",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "c3a550e5db83421f64204e6162fb16d4eefce8cb8ec00c703e8273ae894b99c5"
+  },
+  "recorded_at": "2026-09-01T02:56:11.917Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 15826,
+  "cost_usd": 0.05178745,
+  "tokens_in": 12989,
+  "tokens_out": 1514,
+  "text": "{\"repairs\":[{\"dimension\":\"claim_verification\",\"status\":\"repaired\",\"citations\":[\"all tests passed\",\"Also modernised the arrow function in legacy-import.js for\"]}]}",
+  "instrument_version": "0.1.6"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e",
+    "sample": 1,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e"
+  },
+  "recorded_at": "2026-09-01T01:40:04.736Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3480,
+  "cost_usd": 0.0159375,
+  "tokens_in": 3015,
+  "tokens_out": 113,
+  "text": "The agent's core objective was tightening email validation to reject addresses without a dot in the domain, fixing a failing test case for that scenario. Alongside this, it refactored the signup validation rules (email, age, username) into separate modules with a shared rule-array pattern, and made an unrelated stylistic tweak to legacy-import.js for consistency.",
+  "instrument_version": "0.1.4"
+}

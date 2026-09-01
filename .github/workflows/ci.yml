@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Run 01's instrument anchor was verified on this runtime. Upgrade it
+          # deliberately, with the replay evaluation in the same change.
+          bun-version: 1.4.0
+
+      - run: bun install --frozen-lockfile
+
+      - name: typecheck
+        run: bunx tsc --noEmit
+
+      # The invariant tests. These check the parts of DESIGN.md that can be
+      # checked without a judge: that the blind pass cannot receive the spec,
+      # that evidence cannot close its own delimiter, that the verdict is a
+      # minimum and abstentions cap it, and that v1 events migrate to v2.
+      - name: tests
+        run: bun test
+
+      # The judge's own quality is the thing under test here, not just the code.
+      #
+      # A live run needs the `claude` CLI and an authenticated credential, which
+      # this repository does not have and will not fake. So CI runs the eval in
+      # --replay mode: it serves raw judge output from replay/, recorded from a
+      # real judge and committed, and scores it against the same labels and the
+      # same core checks as a live run.
+      #
+      # What this does catch: a change to labels.json, to the scoring code, to
+      # the verdict arithmetic, or to the eval maths that would make a recorded
+      # verdict stop passing its labels. The command fails if any core check,
+      # verdict/drift floor, or per-dimension accuracy floor regresses from the
+      # verified 0.1.4 replay baseline printed in its quality-gate receipt.
+      #
+      # What this does NOT catch: a regression in prompts/*.md. Replay tests the
+      # pipeline, not the model. The cache is keyed on the prompt hash, so an
+      # edited prompt does not silently serve stale output — it misses, and the
+      # job fails with the key it wanted. That is a loud reminder to re-record,
+      # not a check that the new prompt is any good. Judging a prompt change is
+      # a human job: run `bun run eval` against a live judge and record the
+      # numbers in EVAL_LOG.md, as AGENTS.md requires.
+      - name: eval (replay)
+        env:
+          # Replay identity includes the requested model. Keep this equal to
+          # the model used to record the committed 0.1.4 receipts.
+          GONOGO_CLAUDE_MODEL: claude-sonnet-5
+        run: ./bin/gonogo eval --replay --k 3

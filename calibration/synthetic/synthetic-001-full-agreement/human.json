@@ -1,0 +1,15 @@
+{
+  "schema": "gonogo/human@1",
+  "run_id": "synthetic-001-full-agreement",
+  "reviewer": "synthetic",
+  "recorded_at": "2026-08-31T12:00:00Z",
+  "synthetic": true,
+  "dimensions": {
+    "task_satisfaction": 4,
+    "scope_discipline": 4,
+    "claim_verification": 4,
+    "goal_alignment": 4
+  },
+  "spec_clarity": 3,
+  "notes": "Agrees with the judge on every dimension."
+}

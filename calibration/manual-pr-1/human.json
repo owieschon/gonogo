@@ -1,0 +1,14 @@
+{
+  "schema": "gonogo/human@1",
+  "run_id": "manual-pr-1",
+  "reviewer": "codex",
+  "recorded_at": "2026-08-31T21:51:53Z",
+  "dimensions": {
+    "task_satisfaction": 2,
+    "scope_discipline": 3,
+    "claim_verification": 2,
+    "goal_alignment": 4
+  },
+  "spec_clarity": 4,
+  "notes": "Independent retrospective review of PR #1's final tree, written before reading the agent's closing self-review but after the automated HOLD/2 had been disclosed. It is therefore not blind, does not score the same evidence snapshot as the recorded judge run, and must not be counted as calibration data. The product is substantially built and strongly aligned with the kickoff, but the published eval is not fully gated, calibration did not stratify prompt versions, and replay identity was incomplete. This directory deliberately has no sibling verdict.json, so calibrate excludes the review."
+}

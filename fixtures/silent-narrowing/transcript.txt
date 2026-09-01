@@ -1,0 +1,8 @@
+[11:05] user: see spec.md
+[11:06] agent: Starting on the validation changes.
+[11:08] agent: Replaced the `includes("@")` check with a pattern requiring a dot
+  in the domain: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+[11:11] agent: Ran `node test.js` — 4/4 pass, exit 0.
+[11:11] agent: Both requirements are implemented and the suite is green.
+  src/validate.js is the only file changed; test.js and legacy-import.js are
+  untouched as instructed. Done.

@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHash": "724c87ed1893c58b33bcf4d2746b63ff1d77c5e1564cf3ebea7a786377f2f607",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "3826c628dc188ff52eef4344fc16a434f52ff08c2c1a0fdeee3296da14d150d1",
+    "evidenceHashFull": "724c87ed1893c58b33bcf4d2746b63ff1d77c5e1564cf3ebea7a786377f2f607"
+  },
+  "recorded_at": "2026-09-01T01:43:29.404Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 19994,
+  "cost_usd": 0.0619473,
+  "tokens_in": 13423,
+  "tokens_out": 2081,
+  "text": "{\"repairs\":[{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"`validateSignup` in `src/validate.js` accepts email addresses whose domain has\",\"The test `rejects an email with no dot in the domain` in `test.js` already\",\"covers this case and currently fails. Make it pass.\",\"Do not change `test.js`. Do not change the age or username rules.\"]}]}",
+  "instrument_version": "0.1.4"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 3,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.6",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-09-01T02:42:25.230Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3604,
+  "cost_usd": 0.0052940999999999995,
+  "tokens_in": 2598,
+  "tokens_out": 128,
+  "text": "The agent was trying to prevent duplicate or fraudulent signups by normalizing email addresses (case, whitespace, and Gmail-style dot/plus aliasing) so equivalent addresses are recognized as the same account, both at validation time and for detecting existing duplicates in a list. It built this as reusable normalization logic shared between the signup validator and a new duplicate-detection utility.",
+  "instrument_version": "0.1.6"
+}

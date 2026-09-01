@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 2,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-08-31T19:35:55.967Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 13072,
+  "cost_usd": 0.0116998,
+  "tokens_in": 38626,
+  "tokens_out": 138,
+  "text": "The agent was extending signup email validation to normalize addresses—trimming, lower-casing, and collapsing Gmail-style dot/plus aliases—so that alias variants resolve to the same canonical account, then reused that normalization to build a duplicate-email detector across a list of addresses. The agent's own transcript notes one test still failing (a dotless-domain case), so the work was left incomplete relative to its own stated spec."
+}

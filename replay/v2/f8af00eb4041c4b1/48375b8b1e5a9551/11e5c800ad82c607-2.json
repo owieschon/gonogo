@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "11e5c800ad82c60722d8eb9f40acda6fe2a331b4ba815c4cd90560225af973c2",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "11e5c800ad82c60722d8eb9f40acda6fe2a331b4ba815c4cd90560225af973c2"
+  },
+  "recorded_at": "2026-09-01T02:08:30.790Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3375,
+  "cost_usd": 0.0040643,
+  "tokens_in": 1832,
+  "tokens_out": 102,
+  "text": "The agent was trying to fix signup email validation so that addresses with leading or trailing whitespace are trimmed before the \"@\" format check, rather than being incorrectly rejected. However, its claim of handling a \"dotless-domain case\" is unsupported by the diff, which only adds trimming and no domain-format logic.",
+  "instrument_version": "0.1.5"
+}

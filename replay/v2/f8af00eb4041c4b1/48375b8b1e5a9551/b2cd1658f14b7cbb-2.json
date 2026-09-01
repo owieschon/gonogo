@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.5",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "b2cd1658f14b7cbb753464fea768871ed3440d03b5791281eba940473e36b6ff"
+  },
+  "recorded_at": "2026-09-01T02:12:14.945Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3892,
+  "cost_usd": 0.0045158,
+  "tokens_in": 1897,
+  "tokens_out": 127,
+  "text": "The agent was tasked with tightening signup input validation, specifically replacing a weak email check (mere \"@\" presence) with a proper email-format pattern requiring a domain dot. It deliberately stopped short of also raising the minimum signup age, flagging that changing MIN_AGE would affect existing underage accounts in an ambiguous way and required a product decision rather than a unilateral code change.",
+  "instrument_version": "0.1.5"
+}

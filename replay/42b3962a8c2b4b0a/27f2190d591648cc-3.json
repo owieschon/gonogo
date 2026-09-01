@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e",
+    "sample": 3,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "27f2190d591648cc009dba2ba2e67b05b179c0b727cef768526e434372987f5e"
+  },
+  "recorded_at": "2026-08-31T19:47:13.015Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 6701,
+  "cost_usd": 0.012220400000000001,
+  "tokens_in": 39054,
+  "tokens_out": 147,
+  "text": "The agent was asked to fix email validation to require a dot in the domain (implemented via a new regex in src/rules/email.js), but it also performed unrequested opportunistic refactoring—splitting validate.js's inline checks into separate rule modules and modernizing an unrelated function in legacy-import.js to an arrow function. These are two distinct objectives: a targeted bug fix and a self-initiated cleanup/refactor bundled into the same change."
+}

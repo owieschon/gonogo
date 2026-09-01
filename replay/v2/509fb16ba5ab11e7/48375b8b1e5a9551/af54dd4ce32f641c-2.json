@@ -1,0 +1,22 @@
+{
+  "schema": "gonogo/replay@2",
+  "key": {
+    "promptHash": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHash": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715",
+    "sample": 2,
+    "backend": "claude-cli",
+    "instrumentVersion": "0.1.4",
+    "model": "claude-sonnet-5",
+    "promptHashFull": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c",
+    "evidenceHashFull": "af54dd4ce32f641c66c8a68aa18d79dfa2a3407b3bb17726bfd065c95bb02715"
+  },
+  "recorded_at": "2026-09-01T01:28:19.330Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 3023,
+  "cost_usd": 0.0039698,
+  "tokens_in": 1767,
+  "tokens_out": 100,
+  "text": "The agent was trying to tighten email validation in the signup form so that addresses lacking a proper dotted domain (e.g., \"ada@localhost\") are correctly rejected instead of passing on a simple \"@\" check. This is a narrow correctness fix to one validation rule, leaving age and username checks untouched.",
+  "instrument_version": "0.1.4"
+}

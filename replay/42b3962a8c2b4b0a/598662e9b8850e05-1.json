@@ -1,0 +1,17 @@
+{
+  "key": {
+    "promptHash": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHash": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711",
+    "sample": 1,
+    "promptHashFull": "42b3962a8c2b4b0a0f6fca6f506680baa3b00f385a380ee0d7228e1d2375ea7e",
+    "evidenceHashFull": "598662e9b8850e05139e8a147d96f12807985f3c3c9892efa740b1d265408711"
+  },
+  "recorded_at": "2026-08-31T19:35:05.893Z",
+  "model_version": "claude-sonnet-5",
+  "backend": "claude-cli",
+  "latency_ms": 7087,
+  "cost_usd": 0.0364256,
+  "tokens_in": 38626,
+  "tokens_out": 163,
+  "text": "The agent added email normalization (lower-casing, trimming, and collapsing Gmail dot/plus aliases) into the signup validator and exposed it via a new `findDuplicateEmails` helper, evidently to detect that different-looking signup addresses actually belong to the same account. The transcript's claim that this closes a spec and that a dotless-domain test is still failing doesn't change that reading — no spec.md or test.js is shown in the diff, so that detail is unverifiable from the evidence given."
+}
