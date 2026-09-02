@@ -86,12 +86,39 @@ outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 That file is committed and public, so it takes fixture events only. A `real`,
 `rater` or `outcome` event describes somebody's actual work and defaults
 instead to `private/events.jsonl`, which is gitignored. `appendEvent` refuses
-to write those kinds to any path inside this checkout outside `private/`,
-whatever the spelling — `..`, a differently cased name and a symlink all
-resolve to the file they would really write. `src/event-destination.ts` is that
-boundary and `src/event-privacy.test.ts` is its test. The historical `real`,
-`rater` and `outcome` lines already in the tracked log are this repository's own
-self-judgements and stay where they are; the log is never rewritten.
+to write those kinds to any path inside this checkout outside `private/`.
+`src/event-destination.ts` is that boundary and `src/event-privacy.test.ts` is
+its test.
+
+The destination is normalized once, in `resolveEventDestination`, and that one
+string is what the policy decides on and what every existence check, read,
+`mkdir` and append then uses. Normalization walks the path one component at a
+time and runs `realpath` on each prefix, so `..` is applied after symlinks are
+followed rather than before — `path.resolve` collapses `..` first, which let
+`<somewhere>/link/../events.jsonl`, with `link` pointing into this checkout,
+read as a path outside the checkout while `open(2)` landed on the tracked log.
+A differently cased name, a symlink to the log, a symlink to the checkout, and
+a hard link (which has no link to resolve and is caught by device and inode
+instead) all resolve to the file they would really write.
+
+Three things the boundary does not close, and does not claim to:
+
+- **Final-component TOCTOU.** The decision reflects the filesystem at the
+  moment of the check. Anything that can write to a directory on the path can
+  swap a component between the check and the append.
+- **Alternate mount aliases.** A file reachable through two mount points is two
+  canonical paths. The device-and-inode comparison covers the tracked log
+  itself; it does not cover the rest of the checkout.
+- **Case-insensitive filesystems on Linux.** Case folding is applied on darwin
+  and win32 by platform, not by asking the filesystem, so a case-insensitive
+  mount on Linux is compared case-sensitively.
+
+The log is never rewritten, so nine subject-kind lines predating this boundary
+stay where they are. They are not one thing: four `real` events are this
+repository's own self-judge runs (sessions 001-004, verdicts under `audits/`),
+four `rater` events are the synthetic calibration fixtures — `rater_id`
+`synthetic`, `synthetic: true`, no person and no real run behind them — and one
+`outcome` event records that PR #1 merged.
 
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
   `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,
