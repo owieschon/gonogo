@@ -66,11 +66,13 @@ review is two reviews of one run, reported under its own name. `gonogo
 calibrate` reports that count, reports every other kind of pair under its own
 name, and never pools the two.
 
-A rating written before the field existed is `undeclared`, unless it already
-declared `synthetic: true`, which migrates to `synthetic`. Undeclared is the
-absence of a classification, not a person: undeclared ratings are listed and
-excluded from every figure rather than being read as human, and a pair holding
-one is excluded whatever the other side is. Re-record such a rating with an
+A rating written before the field existed is `undeclared`. The one exception is
+a v1-v4 rater event in `events.jsonl` that already declared `synthetic: true`,
+which migrates to `synthetic`; a legacy `human.json` with no `rater_kind` is
+`undeclared` whatever else it declares. Undeclared is the absence of a
+classification, not a person: undeclared ratings are listed and excluded from
+every figure rather than being read as human, and a pair holding one is
+excluded whatever the other side is. Re-record such a rating with an
 explicit `rater_kind` to make it countable.
 
 ## synthetic/
