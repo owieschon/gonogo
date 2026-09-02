@@ -15,7 +15,7 @@
  * Fixture events are unaffected and keep the tracked log.
  */
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
-import { realpathSync, statSync } from "node:fs";
+import { lstatSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { EventKind } from "./events.ts";
 
@@ -50,8 +50,24 @@ export function isSubjectEventKind(kind: EventKind): boolean {
  * A component that does not exist yet keeps its lexical form and the walk
  * continues, so a destination whose directories `appendEvent` is about to create
  * normalizes to the file it will create.
+ *
+ * A component that exists but is a symlink whose target does not exist yet is
+ * neither of those. `realpath` fails on it, so it used to keep its lexical form
+ * too — while `open(2)` still followed it and created its target. Such a
+ * component is expanded by reading the link and continuing the walk at the
+ * target, so a dangling symlink normalizes to the file it will create.
  */
 export function canonicalPath(path: string): string {
+  return walk(path, { hops: 0 });
+}
+
+/**
+ * `realpath` gives up after this many links; so does this walk, and it refuses
+ * rather than returning a path that names no file.
+ */
+const SYMLINK_HOPS_LIMIT = 40;
+
+function walk(path: string, budget: { hops: number }): string {
   // Not `resolve`/`join`: both would collapse `..` before a symlink is seen.
   const absolute = isAbsolute(path) ? path : `${process.cwd()}${sep}${path}`;
   const root = parse(absolute).root;
@@ -62,14 +78,33 @@ export function canonicalPath(path: string): string {
   let current = root;
   for (const component of components) {
     current = component === ".." ? dirname(current) : join(current, component);
-    try {
-      current = realpathSync.native(current);
-    } catch {
-      // Does not exist yet. The lexical form stands and the components after it
-      // are applied to it, which is what the kernel will do once it is created.
-    }
+    current = expand(current, budget);
   }
   return current;
+}
+
+/** One component, already appended to a resolved prefix, resolved in place. */
+function expand(current: string, budget: { hops: number }): string {
+  try {
+    return realpathSync.native(current);
+  } catch {
+    // Either nothing is there, or a symlink is there whose target is not.
+  }
+  let target: string;
+  try {
+    if (!lstatSync(current).isSymbolicLink()) return current;
+    target = readlinkSync(current);
+  } catch {
+    // Does not exist yet. The lexical form stands and the components after it
+    // are applied to it, which is what the kernel will do once it is created.
+    return current;
+  }
+  if (++budget.hops > SYMLINK_HOPS_LIMIT) {
+    throw new Error(`too many symbolic links while resolving ${current}`);
+  }
+  // Concatenated, not joined: a relative target may begin with `..`, and that
+  // `..` belongs to the walk, which applies it to the resolved prefix.
+  return walk(isAbsolute(target) ? target : `${dirname(current)}${sep}${target}`, budget);
 }
 
 /** True when two paths name the same file, by the same rules as the boundary. */
