@@ -147,7 +147,8 @@ defines: `bunx tsc --noEmit` clean; `bun test` 134 pass, 0 fail, 535
 assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
 --k 3` 21/21 verdicts with zero hard failures and every published floor
 cleared, gate PASS; the event log reads 658 events with 0 malformed lines at
-schema v5; all 318 committed JSON files parse and every committed manual
+schema v5, measured at `141d232`; all 318 committed JSON files parse at that
+same commit and every committed manual
 rating validates against the rater-kind rules; and a scan of the diff found no
 credential, key, email address, or employer or client reference.
 
@@ -230,6 +231,14 @@ assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
 cleared, gate PASS; `gonogo calibrate` still reporting 0 judge-versus-human
 pairs; and a scan of the diff finding no credential, key, employer or client
 reference.
+
+Event log and artefact counts at this head, `main...HEAD`: `events.jsonl` is
+`+43 -0` against `main`, growing from 637 to 680 lines with 0 malformed. The 43
+are three appends — 21 from session-006's replay gate at `a98cf03`, 21 from the
+correction's replay gate at `6317515`, and the single live judge event from the
+completed self-judge at `e272d1b`. All 319 committed `.json` files parse, one
+more than session-006 counted because `audits/session-007-self-verdict.json` is
+now among them.
 
 The correction changes no prompt, dimension, threshold, model, fixture or
 receipt, so the replay gate is the applicable instrument check. The self-judge
