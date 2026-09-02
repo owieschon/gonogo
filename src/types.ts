@@ -135,11 +135,47 @@ export interface VerdictFile {
   provenance: Provenance;
 }
 
-/** Human verdict recorded after a real run; same shape as the rubric dimensions. */
-export interface HumanFile {
+/**
+ * Who produced a manual rating. Declared, never inferred: a reviewer id says
+ * nothing about whether a person or a language model wrote the scores, and
+ * treating an AI review as human calibration is the one error this field
+ * exists to make impossible.
+ *
+ * - `human` — a person read the evidence and wrote the scores.
+ * - `llm`   — a language model wrote them, in any session, under any handle.
+ * - `synthetic` — hand-written demo data that scores no real run.
+ */
+export const RATER_KINDS = ["human", "llm", "synthetic"] as const;
+
+export type RaterKind = (typeof RATER_KINDS)[number];
+
+/**
+ * A rating recorded before `rater_kind` existed. It is not a classification of
+ * the author; it is the absence of one, and it is never promoted to `human`.
+ */
+export const UNDECLARED_RATER_KIND = "undeclared";
+
+export type StoredRaterKind = RaterKind | typeof UNDECLARED_RATER_KIND;
+
+export function isRaterKind(value: unknown): value is RaterKind {
+  return typeof value === "string" && (RATER_KINDS as readonly string[]).includes(value);
+}
+
+export function isStoredRaterKind(value: unknown): value is StoredRaterKind {
+  return isRaterKind(value) || value === UNDECLARED_RATER_KIND;
+}
+
+/**
+ * A manual rating recorded next to a run: `human.json`, historically named for
+ * the only rater kind that was expected to write one. The file name and the
+ * `gonogo/human@1` schema id are unchanged; who wrote it is `rater_kind`.
+ */
+export interface ManualRatingFile {
   schema: "gonogo/human@1";
   run_id: string;
   reviewer: string;
+  /** Absent only on records written before the field existed; those are undeclared. */
+  rater_kind?: RaterKind;
   recorded_at: string;
   synthetic?: boolean;
   dimensions: Record<Dimension, number | "abstain">;
