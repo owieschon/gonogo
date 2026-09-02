@@ -62,9 +62,9 @@ treats as trust currency.
 
 Only a `human` rating paired with a gonogo judge run on the same evidence
 counts as judge-versus-human calibration. A human rating paired with an LLM
-review is two reviews of one run, reported under its own name. `gonogo calibrate` prints that count on its
-first line, reports every other kind of pair under its own name, and never
-pools the two.
+review is two reviews of one run, reported under its own name. `gonogo
+calibrate` reports that count, reports every other kind of pair under its own
+name, and never pools the two.
 
 A rating written before the field existed is `undeclared`, unless it already
 declared `synthetic: true`, which migrates to `synthetic`. Undeclared is the
