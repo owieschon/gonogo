@@ -8,7 +8,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { assertWritableDestination } from "./event-destination.ts";
+import { resolveEventDestination } from "./event-destination.ts";
 import {
   CITATION_REPAIR_DIMENSIONS,
   DIMENSIONS,
@@ -504,7 +504,11 @@ export function appendEvent(path: string, event: GonogoEvent): void {
   const validated = validateCurrentEvent(event);
   // Before the log is read, created or touched: a real, rater or outcome event
   // may not land in the committed fixture log. See event-destination.ts.
-  assertWritableDestination(path, validated.kind);
+  //
+  // `destination` is the destination, normalized once. Every syscall below uses
+  // this exact string — the file that was checked is the file that is written.
+  // Re-deriving a path from `path` after this line reopens the bypass.
+  const destination = resolveEventDestination(path, validated.kind);
   // "undeclared" is a migration outcome, not something a writer may choose:
   // whoever records a rating now knows whether a person or a model wrote it.
   if (isRaterEvent(validated) && validated.rater_kind === UNDECLARED_RATER_KIND) {
@@ -513,17 +517,17 @@ export function appendEvent(path: string, event: GonogoEvent): void {
         `"${UNDECLARED_RATER_KIND}" is reserved for migrated legacy records`,
     );
   }
-  if (existsSync(path)) {
-    const { events, malformed } = readEvents(path);
+  if (existsSync(destination)) {
+    const { events, malformed } = readEvents(destination);
     if (malformed > 0) {
-      throw new Error(`${path} contains ${malformed} malformed event line(s); repair the log before appending`);
+      throw new Error(`${destination} contains ${malformed} malformed event line(s); repair the log before appending`);
     }
     if (isJudgeEvent(validated) && events.some((prior) => isJudgeEvent(prior) && prior.run_id === validated.run_id)) {
-      throw new Error(`judge run_id "${validated.run_id}" already exists in ${path}`);
+      throw new Error(`judge run_id "${validated.run_id}" already exists in ${destination}`);
     }
   }
-  mkdirSync(dirname(path), { recursive: true });
-  appendFileSync(path, JSON.stringify(validated) + "\n");
+  mkdirSync(dirname(destination), { recursive: true });
+  appendFileSync(destination, JSON.stringify(validated) + "\n");
 }
 
 /** Read the log, migrating older events on the way in. Bad lines are reported. */
