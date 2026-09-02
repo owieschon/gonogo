@@ -129,3 +129,28 @@ concrete case for a model-independent applicability key: a verdict needs to
 bind the complete assigned specification and inspected evidence before a
 consumer may act on it. Until that contract exists, the human review and the
 correctly scoped deterministic gates remain the merge authority.
+
+## session-006 — self-judge not run
+
+The calibration-provenance branch, specified in `SPEC-CALIBRATION-PROVENANCE.md`
+and diffed against `main`.
+
+**No self-judge verdict exists for this change.** Rule 6 requires one, and it
+was not run: `scripts/self-judge.sh` invokes a live judge, and this session was
+instructed not to incur paid usage. The preceding session's session-004 audit
+records that a comparable whole-branch self-judge cost $4.08. Recording the
+absence is the honest outcome; substituting a replayed verdict would be a
+cached judgement of different code, and inventing one is not an option.
+
+What did run, on the branch head, is every deterministic gate the repository
+defines: `bunx tsc --noEmit` clean; `bun test` 134 pass, 0 fail, 535
+assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
+--k 3` 21/21 verdicts with zero hard failures and every published floor
+cleared, gate PASS; the event log reads 658 events with 0 malformed lines at
+schema v5; all 318 committed JSON files parse and every committed manual
+rating validates against the rater-kind rules; and a scan of the diff found no
+credential, key, email address, or employer or client reference.
+
+The branch changes no prompt, dimension, threshold, model or receipt, so the
+replay gate is the applicable instrument check. Whoever merges should run the
+live self-judge, or record that they accepted the merge without one.
