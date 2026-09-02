@@ -60,15 +60,18 @@ handle says nothing about whether a person or a model is behind it, and reading
 an AI review as human calibration would misstate the one number this project
 treats as trust currency.
 
-Only a `human` rating paired with a judge run on the same evidence counts as
-judge-versus-human calibration. `gonogo calibrate` prints that count on its
+Only a `human` rating paired with a gonogo judge run on the same evidence
+counts as judge-versus-human calibration. A human rating paired with an LLM
+review is two reviews of one run, reported under its own name. `gonogo calibrate` prints that count on its
 first line, reports every other kind of pair under its own name, and never
 pools the two.
 
-A rating written before the field existed is `undeclared`. That is the absence
-of a classification, not a person: undeclared ratings are listed and excluded
-from every figure rather than being read as human. Re-record such a rating with
-an explicit `rater_kind` to make it countable.
+A rating written before the field existed is `undeclared`, unless it already
+declared `synthetic: true`, which migrates to `synthetic`. Undeclared is the
+absence of a classification, not a person: undeclared ratings are listed and
+excluded from every figure rather than being read as human, and a pair holding
+one is excluded whatever the other side is. Re-record such a rating with an
+explicit `rater_kind` to make it countable.
 
 ## synthetic/
 

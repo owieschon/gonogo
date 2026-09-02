@@ -91,7 +91,9 @@ outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
   or `synthetic` — declared by the writer and never inferred from `rater_id`.
   Agreement is computed per rater pair, which is why panel mode will be data
   and not code. A v1-v4 rater event migrates to `undeclared` and is excluded
-  from every figure; a new one may not be recorded as `undeclared`.
+  from every figure, with one exception: a legacy event that already declared
+  `synthetic: true` migrates to `rater_kind: "synthetic"`, because that record
+  does state who wrote it. A new event may not be recorded as `undeclared`.
 - Outcome events (`kind: outcome`) record what happened to the work:
   `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`.
   A supplied run must resolve to a real judge event carrying the same task id.
@@ -101,8 +103,11 @@ outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 `runs/` and `calibration/`. Those files carry `rater_kind` too. A standalone
 rating is printed with its notes, under a heading naming its rater kind, but is
 never counted as agreement; only a same-run, same-evidence pair is calibration,
-and only a `human` rating paired with a judge run is judge-versus-human
-calibration. The two committed reviews under `calibration/manual-pr-*` were
+and only a `human` rating paired with a gonogo judge run is judge-versus-human
+calibration. A human rating paired with a standalone LLM review is reported as
+its own class and is not calibration. A pair holding any undeclared rating is
+excluded and listed with that reason, including when the other side is
+synthetic. The two committed reviews under `calibration/manual-pr-*` were
 written by language models and are pinned to `llm` by `src/rater-kind.test.ts`.
 
 Never rewrite history in the log. Never add a field without bumping
