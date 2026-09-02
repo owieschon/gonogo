@@ -113,12 +113,12 @@ Three things the boundary does not close, and does not claim to:
   and win32 by platform, not by asking the filesystem, so a case-insensitive
   mount on Linux is compared case-sensitively.
 
-The log is never rewritten, so nine subject-kind lines predating this boundary
-stay where they are. They are not one thing: four `real` events are this
-repository's own self-judge runs (sessions 001-004, verdicts under `audits/`),
-four `rater` events are the synthetic calibration fixtures — `rater_id`
-`synthetic`, `synthetic: true`, no person and no real run behind them — and one
-`outcome` event records that PR #1 merged.
+The log is never rewritten, so ten subject-kind lines predating this boundary
+stay where they are. They are not one thing: five `real` events are this
+repository's own self-judge runs (sessions 001-004 and session-007, verdicts
+under `audits/`), four `rater` events are the synthetic calibration fixtures —
+`rater_id` `synthetic`, `synthetic: true`, no person and no real run behind
+them — and one `outcome` event records that PR #1 merged.
 
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
   `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,
