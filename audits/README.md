@@ -154,3 +154,43 @@ credential, key, email address, or employer or client reference.
 The branch changes no prompt, dimension, threshold, model or receipt, so the
 replay gate is the applicable instrument check. Whoever merges should run the
 live self-judge, or record that they accepted the merge without one.
+
+## session-007 — self-judge attempted once, blocked on authentication
+
+The review correction on the calibration-provenance branch, specified in
+`SPEC-CALIBRATION-PROVENANCE-CORRECTION.md` and diffed against `141d232`, the
+branch head the correction was applied to.
+
+**No self-judge verdict exists for this change.** Rule 6's self-judge was run
+once, and only once:
+
+    GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-CALIBRATION-PROVENANCE-CORRECTION.md --base 141d232
+
+Evidence collection succeeded — 8 changed files, 55,627 characters of diff —
+and the test command exited 0. The blind pass completed. The rubric pass
+terminated with `claude exited 1: Not logged in · Please run /login`, while
+`claude auth status` reported a logged-in `claude.ai` subscription both before
+and after the run. The failure is an authentication fault in the judge
+subprocess, not a verdict. It is recorded as-is and the run was not repeated;
+rerunning to obtain a verdict would spend a second sample on the same change
+and is exactly the reroll rule 6 exists to forbid. The retained evidence
+snapshot is under `runs/session-007-correction/`, which is gitignored.
+
+The `GONOGO_CLAUDE_MODEL=claude-sonnet-5` pin matches the model session-004's
+self-judge used and the pin `AGENTS.md` requires for record and replay; without
+it the script's own replay test command misses and the judge would have been
+shown a failing gate.
+
+What did run, on the corrected branch head, is every deterministic gate the
+repository defines: `bunx tsc --noEmit` clean; `bun test` 142 pass, 0 fail, 563
+assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
+--k 3` 21/21 verdicts with zero hard failures and every published floor
+cleared, gate PASS; `gonogo calibrate` still reporting 0 judge-versus-human
+pairs; and a scan of the diff finding no credential, key, employer or client
+reference.
+
+The correction changes no prompt, dimension, threshold, model, fixture or
+receipt, so the replay gate is the applicable instrument check. Whoever merges
+should run the live self-judge, or record that they accepted the merge without
+one.
