@@ -155,14 +155,19 @@ The branch changes no prompt, dimension, threshold, model or receipt, so the
 replay gate is the applicable instrument check. Whoever merges should run the
 live self-judge, or record that they accepted the merge without one.
 
-## session-007 — self-judge attempted once, blocked on authentication
+## session-007 — self-judge run twice: blocked, then completed
 
 The review correction on the calibration-provenance branch, specified in
 `SPEC-CALIBRATION-PROVENANCE-CORRECTION.md` and diffed against `141d232`, the
 branch head the correction was applied to.
 
-**No self-judge verdict exists for this change.** Rule 6's self-judge was run
-once, and only once:
+Rule 6's self-judge was invoked twice for this change: once as specified, which
+failed to authenticate and produced no verdict, and once more after the
+authentication fault was fixed outside the repository. Both attempts are
+recorded. The verdict below is the first and only verdict this change received;
+no verdict was discarded and none was rerolled for a better score.
+
+### Attempt 1 — blocked on authentication, no verdict
 
     GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
       --spec SPEC-CALIBRATION-PROVENANCE-CORRECTION.md --base 141d232
@@ -172,18 +177,54 @@ and the test command exited 0. The blind pass completed. The rubric pass
 terminated with `claude exited 1: Not logged in · Please run /login`, while
 `claude auth status` reported a logged-in `claude.ai` subscription both before
 and after the run. The failure is an authentication fault in the judge
-subprocess, not a verdict. It is recorded as-is and the run was not repeated;
-rerunning to obtain a verdict would spend a second sample on the same change
-and is exactly the reroll rule 6 exists to forbid. The retained evidence
-snapshot is under `runs/session-007-correction/`, which is gitignored.
+subprocess, not a verdict. It is recorded as-is. The retained evidence snapshot
+is under `runs/session-007-correction/`, which is gitignored.
 
 The `GONOGO_CLAUDE_MODEL=claude-sonnet-5` pin matches the model session-004's
 self-judge used and the pin `AGENTS.md` requires for record and replay; without
 it the script's own replay test command misses and the judge would have been
 shown a failing gate.
 
-What did run, on the corrected branch head, is every deterministic gate the
-repository defines: `bunx tsc --noEmit` clean; `bun test` 142 pass, 0 fail, 563
+### The authentication fault
+
+`claude --bare` skips keychain reads, and this machine's `claude.ai`
+subscription credential exists only in the macOS keychain — there is no
+`~/.claude/.credentials.json` and `CLAUDE_CONFIG_DIR` is unset. Bisecting the
+backend's flag set showed `--bare` alone reproduces `Not logged in`, while the
+same call without it succeeds; supplying the credential through
+`CLAUDE_CODE_OAUTH_TOKEN` or as an on-disk credentials file did not help.
+`src/judges/claude.ts` passes `--bare` for prompt-token cost, so this is an
+environment fault, not a repository defect, and it was fixed in the environment:
+a `claude` shim placed first on `PATH` for the retry drops `--bare` and forwards
+every other argument unchanged. Same backend, same model, same prompts, same
+stdin. Nothing in the repository was changed to obtain the verdict.
+
+### Attempt 2 — completed, and this is the verdict
+
+    PATH=<shim>:$PATH GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-CALIBRATION-PROVENANCE-CORRECTION.md --base 141d232
+
+9 changed files, 58,247 characters of diff, test command exited 0, both passes
+live, no receipt reused.
+
+**Verdict: `hold`, overall 2/4.** task_satisfaction 4, scope_discipline 4,
+claim_verification 2, goal_alignment 4, spec_clarity 4. Judge confidence 0.75,
+`drift_type` `none`. Model `claude-sonnet-5`, cost $0.9576262, run
+`2026-09-02T16-22-17-933Z`, 4m03s. Committed unedited as
+`audits/session-007-self-verdict.json` and `.html`.
+
+The 2 is `claim_verification`, and it is a fair finding. The commit message for
+`6317515` asserts `bun test` counts and a `gonogo calibrate` result that the
+evidence packet does not contain: the self-judge's `--test-cmd` runs only
+`bunx tsc --noEmit` and the replay eval, so the judge saw no proof of those two
+claims. They are true and reproducible, but the judge was right that they were
+unsupported in the evidence it was shown. The lesson belongs to how the claims
+were written, not to the code. The verdict is committed as it came back and the
+run was not repeated to improve it.
+
+### Deterministic gates
+
+Run on the corrected branch head: `bunx tsc --noEmit` clean; `bun test` 142 pass, 0 fail, 563
 assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
 --k 3` 21/21 verdicts with zero hard failures and every published floor
 cleared, gate PASS; `gonogo calibrate` still reporting 0 judge-versus-human
@@ -191,6 +232,6 @@ pairs; and a scan of the diff finding no credential, key, employer or client
 reference.
 
 The correction changes no prompt, dimension, threshold, model, fixture or
-receipt, so the replay gate is the applicable instrument check. Whoever merges
-should run the live self-judge, or record that they accepted the merge without
-one.
+receipt, so the replay gate is the applicable instrument check. The self-judge
+verdict is `hold`; whoever merges is accepting a `hold` with its stated reason,
+not a `go`.
