@@ -2,6 +2,7 @@
   "schema": "gonogo/human@1",
   "run_id": "manual-pr-1",
   "reviewer": "codex",
+  "rater_kind": "llm",
   "recorded_at": "2026-08-31T21:51:53Z",
   "dimensions": {
     "task_satisfaction": 2,
