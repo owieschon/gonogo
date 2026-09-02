@@ -22,7 +22,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import {
   GONOGO_ROOT,
   PRIVATE_EVENTS,
@@ -465,6 +465,109 @@ describe("a symlink and .. cannot smuggle a subject event into the tracked log",
       expect(canonicalPath(path)).toBe(canonicalPath(join(outside, "events.jsonl")));
       appendEvent(path, judgeEvent("real"));
       expect(readFileSync(join(outside, "events.jsonl"), "utf8")).toContain('"kind":"real"');
+    });
+  });
+});
+
+describe("a dangling final symlink cannot smuggle a subject event into the checkout", () => {
+  /**
+   * The second bypass, reproduced against `2b57307`:
+   *
+   *   ln -s <checkout>/calibration/leaked-events.jsonl /tmp/dangling
+   *   gonogo judge ... --events /tmp/dangling
+   *
+   * `realpath` fails on a symlink whose target does not exist, so the walk kept
+   * the link's own spelling — outside the checkout, allowed — while
+   * `appendFileSync` followed the link and created its target inside the public
+   * checkout. A link is only dangling until the first write; after that the
+   * file it made is committed at the next `git add`.
+   */
+  const PUBLIC_TARGET = join(GONOGO_ROOT, "calibration", "leaked-events.jsonl");
+
+  function withDanglingLink(target: string, fn: (link: string) => void): void {
+    inTemp((dir) => {
+      const link = join(dir, "dangling");
+      symlinkSync(target, link);
+      expect(existsSync(target)).toBe(false);
+      fn(link);
+    });
+  }
+
+  test("the link's own spelling and the file it would create disagree", () => {
+    withDanglingLink(PUBLIC_TARGET, (link) => {
+      expect(canonicalPath(link)).not.toBe(link);
+      expect(canonicalPath(link)).toBe(canonicalPath(PUBLIC_TARGET));
+      expect(isPublishedLocation(link)).toBe(true);
+    });
+  });
+
+  for (const [name, make] of SUBJECT_EVENTS) {
+    test(`a ${name} event through a dangling link into the checkout is refused`, () => {
+      try {
+        withDanglingLink(PUBLIC_TARGET, (link) => {
+          expectRejected(
+            () => appendEvent(link, make()),
+            "a public location inside the gonogo checkout",
+          );
+          // The whole point: nothing was created at the link's target.
+          expect(existsSync(PUBLIC_TARGET)).toBe(false);
+        });
+      } finally {
+        rmSync(PUBLIC_TARGET, { force: true });
+      }
+    });
+  }
+
+  test("a dangling link whose relative target climbs into the checkout is refused", () => {
+    // The target is read as written and walked component by component, so a
+    // `..` inside it is applied to the resolved prefix like any other.
+    try {
+      inTemp((dir) => {
+        const link = join(dir, "dangling");
+        // Relative to the link's own directory, resolved, so the `..` count
+        // is the one the kernel will apply.
+        symlinkSync(relative(canonicalPath(dir), PUBLIC_TARGET), link);
+        expect(canonicalPath(link)).toBe(canonicalPath(PUBLIC_TARGET));
+        expectRejected(
+          () => appendEvent(link, judgeEvent("real")),
+          "a public location inside the gonogo checkout",
+        );
+        expect(existsSync(PUBLIC_TARGET)).toBe(false);
+      });
+    } finally {
+      rmSync(PUBLIC_TARGET, { force: true });
+    }
+  });
+
+  test("a dangling link pointing outside the checkout is still allowed", () => {
+    // A location boundary, not a ban on dangling links: the operator named a
+    // path they own, and the event lands at the file the link really names.
+    inTemp((dir) => {
+      const target = join(dir, "nested", "events.jsonl");
+      const link = join(dir, "dangling");
+      symlinkSync(target, link);
+
+      const validated = resolveEventDestination(link, "real");
+      expect(validated).toBe(canonicalPath(target));
+      expect(existsSync(validated)).toBe(false);
+
+      appendEvent(link, judgeEvent("real"));
+
+      expect(readFileSync(validated, "utf8").trim().split("\n")).toHaveLength(1);
+      expect(JSON.parse(readFileSync(validated, "utf8")).kind).toBe("real");
+    });
+  });
+
+  test("a symlink loop is refused rather than resolved to its own spelling", () => {
+    // Neither link ever resolves, so falling back to the lexical form would
+    // hand the boundary a path that names no file.
+    inTemp((dir) => {
+      symlinkSync(join(dir, "b"), join(dir, "a"));
+      symlinkSync(join(dir, "a"), join(dir, "b"));
+      expect(() => canonicalPath(join(dir, "a"))).toThrow("too many symbolic links");
+      expect(() => appendEvent(join(dir, "a"), judgeEvent("real"))).toThrow(
+        "too many symbolic links",
+      );
     });
   });
 });
