@@ -53,7 +53,9 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   same-evidence run instead of silently dropping or statistically pairing it.
 - **Rater kind is declared, never inferred from an id.** Every manual rating
   carries `rater_kind` (`human`, `llm`, `synthetic`), and only a `human` rating
-  paired with a judge run counts as judge-versus-human calibration. The
+  paired with a gonogo judge run counts as judge-versus-human calibration; a
+  human rating paired with a standalone LLM review is its own class, because
+  neither side of it is the instrument under test. The
   alternative — treating any rater id that is not `judge:*` as a person — read
   this repo's two AI-written reviews as human calibration, which is exactly the
   claim gonogo exists not to make. A rating recorded before the field existed

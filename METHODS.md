@@ -34,10 +34,12 @@ disagreeing with the judge.
    written after reading the machine's score measures anchoring, not agreement.
 3. Every manual rating declares `rater_kind`: `human`, `llm`, or `synthetic`.
    Who wrote a rating is recorded, never inferred from the reviewer handle, and
-   only a `human` rating paired with a judge run on the same evidence is
-   judge-versus-human calibration. AI-written reviews are kept, reported, and
-   reported separately; a rating with no declared kind is excluded from every
-   figure rather than being read as human.
+   only a `human` rating paired with a gonogo judge run on the same evidence is
+   judge-versus-human calibration. A human rating paired with a standalone LLM
+   review is not: neither side of that pair is the instrument under test, so it
+   is reported under its own name. AI-written reviews are kept and reported
+   separately; a rating with no declared kind is excluded from every figure
+   rather than being read as human, and so is any pair holding one.
 4. `gonogo calibrate` recursively discovers manual ratings. A standalone rating
    is shown as review evidence but never counted as agreement. A directory that
    also holds the same run's `verdict.json` reports, per dimension: exact

@@ -99,6 +99,7 @@ const KIND_LABEL: Record<StoredRaterKind, string> = {
  */
 type PairClass =
   | "judge-vs-human"
+  | "human-vs-llm"
   | "human-vs-human"
   | "machine-vs-machine"
   | "synthetic"
@@ -106,6 +107,7 @@ type PairClass =
 
 const PAIR_CLASS_LABEL: Record<PairClass, string> = {
   "judge-vs-human": "judge vs human (calibration)",
+  "human-vs-llm": "human vs LLM review, no judge run (not calibration)",
   "human-vs-human": "human vs human",
   "machine-vs-machine": "machine vs machine (not human calibration)",
   synthetic: "synthetic demo data (measures nothing)",
@@ -113,13 +115,22 @@ const PAIR_CLASS_LABEL: Record<PairClass, string> = {
 };
 
 function classifyPair(a: Rating, b: Rating): PairClass {
-  if (a.raterKind === "synthetic" || b.raterKind === "synthetic") return "synthetic";
+  // Undeclared is tested first, and before synthetic. A pair holding one
+  // rating whose author was never recorded says nothing about agreement no
+  // matter what the other side is, so pairing it with synthetic demo data
+  // must not launder it into the synthetic table instead of the exclusion
+  // list.
   if (a.raterKind === UNDECLARED_RATER_KIND || b.raterKind === UNDECLARED_RATER_KIND) {
     return "undeclared";
   }
+  if (a.raterKind === "synthetic" || b.raterKind === "synthetic") return "synthetic";
   const humans = [a, b].filter((r) => r.raterKind === "human").length;
   if (humans === 2) return "human-vs-human";
-  if (humans === 1) return "judge-vs-human";
+  // A human rating is calibration only against a gonogo judge run. Paired
+  // with a standalone LLM review — a rater event or a human.json carrying
+  // `rater_kind: "llm"`, neither of which is a judge invocation — it is two
+  // reviews of one run and measures nothing about the instrument.
+  if (humans === 1) return a.judgeRun || b.judgeRun ? "judge-vs-human" : "human-vs-llm";
   return "machine-vs-machine";
 }
 
@@ -442,19 +453,26 @@ export function runCalibrate(o: CalibrateOptions): string {
       .join("\n");
   }
 
-  const synth = pairs.filter((p) => p.synthetic);
-  const realPairs = pairs.filter((p) => !p.synthetic);
   // An undeclared rater has no recorded author, so its comparisons are held out
   // of every figure rather than being attributed to whichever kind would be
-  // convenient. They are listed below so the exclusion is visible, not silent.
-  const undeclared = realPairs.filter((p) => p.pairClass === "undeclared");
-  const real = realPairs.filter((p) => p.pairClass !== "undeclared");
+  // convenient. The exclusion is applied before the synthetic split, so a pair
+  // that is both undeclared and synthetic is excluded and listed rather than
+  // scored in the synthetic table. They are listed below so the exclusion is
+  // visible, not silent.
+  const undeclared = pairs.filter((p) => p.pairClass === "undeclared");
+  const declared = pairs.filter((p) => p.pairClass !== "undeclared");
+  const synth = declared.filter((p) => p.synthetic);
+  const real = declared.filter((p) => !p.synthetic);
   const humanPairs = real.filter((p) => p.pairClass === "judge-vs-human");
 
   // The count that may never be inflated: only a declared human rating paired
   // with a judge run on the same evidence is judge-versus-human calibration.
   out.push(`judge-vs-human calibration pairs: ${humanPairs.length}`);
-  for (const pairClass of ["human-vs-human", "machine-vs-machine"] as PairClass[]) {
+  for (const pairClass of [
+    "human-vs-llm",
+    "human-vs-human",
+    "machine-vs-machine",
+  ] as PairClass[]) {
     const count = real.filter((p) => p.pairClass === pairClass).length;
     if (count > 0) out.push(`${PAIR_CLASS_LABEL[pairClass]} pairs: ${count}`);
   }
@@ -483,7 +501,7 @@ export function runCalibrate(o: CalibrateOptions): string {
     );
     if (undeclared.length > 0) {
       out.push(
-        `${undeclared.length} real pair(s) exist but carry an undeclared rater kind and are excluded.`,
+        `${undeclared.length} further pair(s) carry an undeclared rater kind and are excluded.`,
       );
     }
     out.push("Do not quote these figures anywhere.");

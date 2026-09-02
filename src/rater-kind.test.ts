@@ -290,3 +290,173 @@ describe("this repository's committed calibration records", () => {
     expect(output).not.toMatch(/^human ratings with nothing to compare against$/m);
   });
 });
+
+/**
+ * The classification boundary itself. Two ways a pair was misreported before
+ * this block existed: a human rating beside an LLM review with no judge run
+ * was counted as judge-versus-human calibration, and a pair holding an
+ * undeclared rating escaped exclusion whenever the other side was synthetic.
+ * Both are false statements about provenance, so both are pinned here along
+ * with the report branches that read the same classification.
+ */
+describe("pair classification boundary", () => {
+  test("a human rating beside an LLM review with no judge run is not calibration", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      writeEvents(path, [
+        raterEvent({ rater_id: "owen", rater_kind: "human" }),
+        raterEvent({ rater_id: "claude-code-uhg22r", rater_kind: "llm" }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("judge-vs-human calibration pairs: 0");
+      expect(output).toContain("human vs LLM review, no judge run (not calibration) pairs: 1");
+      expect(output).toContain("uncalibrated against human review");
+      expect(output).toContain(
+        "comparison: human vs LLM review, no judge run (not calibration)",
+      );
+      expect(output).not.toContain("judge vs human (calibration)");
+      expect(output).toContain("1 comparison(s), 1 real, 0 of them judge-vs-human");
+    });
+  });
+
+  test("the same pair read from a rating directory is classified the same way", () => {
+    inTemp((dir) => {
+      const runDir = join(dir, "calibration", "manual-pr-9");
+      mkdirSync(runDir, { recursive: true });
+      writeFileSync(
+        join(runDir, "human.json"),
+        JSON.stringify({
+          schema: "gonogo/human@1",
+          run_id: "run-001",
+          reviewer: "codex",
+          rater_kind: "llm",
+          recorded_at: "2026-09-02T00:00:00Z",
+          dimensions: { ...SCORES },
+        }),
+      );
+      const path = join(dir, "events.jsonl");
+      writeEvents(path, [raterEvent({ run_id: "run-001", rater_id: "owen" })]);
+      const output = runCalibrate({ eventsPath: path, dirs: [join(dir, "calibration")] });
+      expect(output).toContain("judge-vs-human calibration pairs: 0");
+      expect(output).toContain("human vs LLM review, no judge run (not calibration) pairs: 1");
+    });
+  });
+
+  test("a judge run still makes a declared human rating calibration", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      writeEvents(path, [
+        judgeEvent("run-001"),
+        raterEvent({ rater_id: "owen", rater_kind: "human" }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("judge-vs-human calibration pairs: 1");
+      expect(output).not.toContain("human vs LLM review");
+    });
+  });
+
+  test("an undeclared rating is excluded even when the other side is synthetic", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      const { rater_kind: _absent, ...legacy } = raterEvent({
+        schema_version: 4,
+        run_id: "run-001",
+        rater_id: "legacy-reviewer",
+      });
+      writeEvents(path, [
+        legacy,
+        raterEvent({
+          run_id: "run-001",
+          rater_id: "synthetic-demo",
+          rater_kind: "synthetic",
+          synthetic: true,
+        }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("pairs excluded for an undeclared rater kind: 1");
+      expect(output).toContain("pairs excluded because a rater kind was never declared");
+      expect(output).toContain("synthetic-demo [synthetic] vs legacy-reviewer [undeclared]");
+      expect(output).toContain("No comparison remains after excluding pairs");
+      // The pair must not be scored as synthetic demo data instead.
+      expect(output).not.toContain("SYNTHETIC DATA ONLY");
+      expect(output).not.toContain("mean gap");
+      expect(output).toContain("0 comparison(s), 0 of them judge-vs-human");
+    });
+  });
+
+  test("a legacy rating that declared itself synthetic is not undeclared", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      const { rater_kind: _absent, ...legacy } = raterEvent({
+        schema_version: 4,
+        run_id: "run-001",
+        rater_id: "legacy-demo",
+        synthetic: true,
+      });
+      writeEvents(path, [
+        legacy,
+        raterEvent({
+          run_id: "run-001",
+          rater_id: "synthetic-demo",
+          rater_kind: "synthetic",
+          synthetic: true,
+        }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("SYNTHETIC DATA ONLY");
+      expect(output).not.toContain("undeclared");
+    });
+  });
+
+  test("the synthetic banner reports a real human rating that forms no judge pair", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      writeEvents(path, [
+        raterEvent({ run_id: "run-s", rater_id: "demo-a", rater_kind: "synthetic", synthetic: true }),
+        raterEvent({ run_id: "run-s", rater_id: "demo-b", rater_kind: "synthetic", synthetic: true }),
+        raterEvent({ run_id: "run-h", rater_id: "owen", rater_kind: "human" }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("SYNTHETIC DATA ONLY");
+      expect(output).toContain("Real human ratings exist, but none forms a same-evidence judge pair.");
+      expect(output).toContain("human ratings with nothing to compare against");
+      expect(output).toContain("judge-vs-human calibration pairs: 0");
+    });
+  });
+
+  test("the synthetic banner says so when no human has rated a real run", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      writeEvents(path, [
+        raterEvent({ run_id: "run-s", rater_id: "demo-a", rater_kind: "synthetic", synthetic: true }),
+        raterEvent({ run_id: "run-s", rater_id: "demo-b", rater_kind: "synthetic", synthetic: true }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("No human has reviewed a real gonogo run yet.");
+      expect(output).not.toContain("Real human ratings exist");
+    });
+  });
+
+  test("the synthetic banner counts excluded undeclared pairs without calling them real", () => {
+    inTemp((dir) => {
+      const path = join(dir, "events.jsonl");
+      const { rater_kind: _absent, ...legacy } = raterEvent({
+        schema_version: 4,
+        run_id: "run-u",
+        rater_id: "legacy-reviewer",
+      });
+      writeEvents(path, [
+        raterEvent({ run_id: "run-s", rater_id: "demo-a", rater_kind: "synthetic", synthetic: true }),
+        raterEvent({ run_id: "run-s", rater_id: "demo-b", rater_kind: "synthetic", synthetic: true }),
+        legacy,
+        raterEvent({ run_id: "run-u", rater_id: "claude-code-uhg22r", rater_kind: "llm" }),
+      ]);
+      const output = runCalibrate({ eventsPath: path, dirs: [] });
+      expect(output).toContain("SYNTHETIC DATA ONLY");
+      expect(output).toContain(
+        "1 further pair(s) carry an undeclared rater kind and are excluded.",
+      );
+      expect(output).not.toContain("real pair(s) exist");
+    });
+  });
+});
