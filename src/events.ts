@@ -8,6 +8,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { assertWritableDestination } from "./event-destination.ts";
 import {
   CITATION_REPAIR_DIMENSIONS,
   DIMENSIONS,
@@ -501,6 +502,9 @@ export function migrateEvent(raw: any): GonogoEvent {
 
 export function appendEvent(path: string, event: GonogoEvent): void {
   const validated = validateCurrentEvent(event);
+  // Before the log is read, created or touched: a real, rater or outcome event
+  // may not land in the committed fixture log. See event-destination.ts.
+  assertWritableDestination(path, validated.kind);
   // "undeclared" is a migration outcome, not something a writer may choose:
   // whoever records a rating now knows whether a person or a model wrote it.
   if (isRaterEvent(validated) && validated.rater_kind === UNDECLARED_RATER_KIND) {
