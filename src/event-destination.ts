@@ -14,7 +14,7 @@
  * checkout the operator has named a destination explicitly and owns it.
  * Fixture events are unaffected and keep the tracked log.
  */
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { EventKind } from "./events.ts";
@@ -37,25 +37,44 @@ export function isSubjectEventKind(kind: EventKind): boolean {
 }
 
 /**
- * The real path of `path`, symlinks resolved as far as the filesystem knows it.
- * A destination that does not exist yet resolves through its deepest existing
- * ancestor, so `private/../events.jsonl` and a symlinked directory both land on
- * the same string as the file they would actually write.
+ * The path `path` really names on this filesystem, resolved the way the kernel
+ * resolves it: one component at a time, left to right, each prefix run through
+ * `realpath` before the next component is applied.
+ *
+ * The order is the whole point. `path.resolve` collapses `..` lexically, before
+ * any symlink is followed, so `outside/link/../events.jsonl` — where `link` is a
+ * symlink into this checkout — reads as `outside/events.jsonl` to a lexical
+ * normalizer and as `<checkout>/events.jsonl` to `open(2)`. Applying `..` to the
+ * already-resolved prefix instead makes the two agree.
+ *
+ * A component that does not exist yet keeps its lexical form and the walk
+ * continues, so a destination whose directories `appendEvent` is about to create
+ * normalizes to the file it will create.
  */
 export function canonicalPath(path: string): string {
-  const absolute = resolve(path);
-  const trailing: string[] = [];
-  let current = absolute;
-  for (;;) {
+  // Not `resolve`/`join`: both would collapse `..` before a symlink is seen.
+  const absolute = isAbsolute(path) ? path : `${process.cwd()}${sep}${path}`;
+  const root = parse(absolute).root;
+  const components = absolute
+    .slice(root.length)
+    .split(/[\\/]+/)
+    .filter((component) => component !== "" && component !== ".");
+  let current = root;
+  for (const component of components) {
+    current = component === ".." ? dirname(current) : join(current, component);
     try {
-      return join(realpathSync.native(current), ...[...trailing].reverse());
+      current = realpathSync.native(current);
     } catch {
-      const parent = dirname(current);
-      if (parent === current) return absolute;
-      trailing.push(basename(current));
-      current = parent;
+      // Does not exist yet. The lexical form stands and the components after it
+      // are applied to it, which is what the kernel will do once it is created.
     }
   }
+  return current;
+}
+
+/** True when two paths name the same file, by the same rules as the boundary. */
+export function isSamePath(a: string, b: string): boolean {
+  return comparable(canonicalPath(a)) === comparable(canonicalPath(b));
 }
 
 function comparable(path: string): string {
@@ -83,19 +102,27 @@ function sameFileOnDisk(a: string, b: string): boolean {
   }
 }
 
-/** True when `path` is the committed fixture log, by any spelling of it. */
-export function isTrackedFixtureLog(path: string): boolean {
-  const candidate = canonicalPath(path);
+/** True when the canonical `candidate` is the committed fixture log. */
+function resolvedIsTrackedFixtureLog(candidate: string): boolean {
   const tracked = canonicalPath(TRACKED_FIXTURE_EVENTS);
   return comparable(candidate) === comparable(tracked) || sameFileOnDisk(candidate, tracked);
 }
 
-/** True when `path` would be written inside the gonogo checkout's public area. */
-export function isPublishedLocation(path: string): boolean {
-  const candidate = canonicalPath(path);
+/** True when the canonical `candidate` sits in the checkout's public area. */
+function resolvedIsPublishedLocation(candidate: string): boolean {
   const root = canonicalPath(GONOGO_ROOT);
   const priv = canonicalPath(PRIVATE_EVENTS_DIR);
   return within(root, candidate) && !within(priv, candidate);
+}
+
+/** True when `path` is the committed fixture log, by any spelling of it. */
+export function isTrackedFixtureLog(path: string): boolean {
+  return resolvedIsTrackedFixtureLog(canonicalPath(path));
+}
+
+/** True when `path` would be written inside the gonogo checkout's public area. */
+export function isPublishedLocation(path: string): boolean {
+  return resolvedIsPublishedLocation(canonicalPath(path));
 }
 
 function describe(kind: EventKind): string {
@@ -111,22 +138,49 @@ function safeCommandFor(kind: EventKind): string {
 }
 
 /**
+ * Normalize the destination once, decide on that exact string, and return it.
+ *
+ * The returned path is the one every caller must use for its existence check,
+ * its read, its `mkdir` and its append. Deciding on one spelling and writing to
+ * another is the bug this function exists to make impossible: a lexical
+ * normalizer collapses `..` before symlinks, so a destination could be approved
+ * as "outside the checkout" while `open(2)` landed on the tracked log.
+ *
+ * What this does not close, stated so nobody reads more into it:
+ *
+ * - **Final-component TOCTOU.** The decision is made from the filesystem as it
+ *   stands at this call. Anything with write access to a directory on the path
+ *   can replace a component between this check and the append.
+ * - **Alternate mount aliases.** One file reachable through two mount points is
+ *   two canonical paths here. The device-and-inode comparison catches that for
+ *   the tracked log itself, but not for the rest of the checkout.
+ * - **Case-insensitive filesystems on Linux.** The case-folded comparison is
+ *   applied on darwin and win32 only, by platform, not by asking the filesystem.
+ *   A case-insensitive mount on Linux is compared case-sensitively.
+ */
+export function resolveEventDestination(path: string, kind: EventKind): string {
+  const destination = canonicalPath(path);
+  // Both checks, not one: a location test alone misses a hard link inside
+  // `private/` pointing at the tracked log, which has no symlink to resolve.
+  if (!isSubjectEventKind(kind)) return destination;
+  const tracked = resolvedIsTrackedFixtureLog(destination);
+  if (!resolvedIsPublishedLocation(destination) && !tracked) return destination;
+  const where = tracked
+    ? "the tracked fixture event log"
+    : "a public location inside the gonogo checkout";
+  throw new Error(
+    `refusing to write ${describe(kind)} to ${destination}: that is ${where}, ` +
+      `and it is committed to a public repository. Only fixture events belong there. ` +
+      `Write subject events to the gitignored private log or to a path outside ` +
+      `${GONOGO_ROOT}: ${safeCommandFor(kind)}`,
+  );
+}
+
+/**
  * Fail closed before anything is opened, created or appended. Called by
  * `appendEvent`, so no writer can reach the tracked log by another route, and
  * again by the CLI so a doomed run stops before it costs a judge call.
  */
 export function assertWritableDestination(path: string, kind: EventKind): void {
-  // Both checks, not one: a location test alone misses a hard link inside
-  // `private/` pointing at the tracked log, which has no symlink to resolve.
-  if (!isSubjectEventKind(kind)) return;
-  if (!isPublishedLocation(path) && !isTrackedFixtureLog(path)) return;
-  const where = isTrackedFixtureLog(path)
-    ? "the tracked fixture event log"
-    : "a public location inside the gonogo checkout";
-  throw new Error(
-    `refusing to write ${describe(kind)} to ${resolve(path)}: that is ${where}, ` +
-      `and it is committed to a public repository. Only fixture events belong there. ` +
-      `Write subject events to the gitignored private log or to a path outside ` +
-      `${GONOGO_ROOT}: ${safeCommandFor(kind)}`,
-  );
+  resolveEventDestination(path, kind);
 }
