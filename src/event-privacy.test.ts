@@ -11,6 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,7 +22,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import {
   GONOGO_ROOT,
   PRIVATE_EVENTS,
@@ -30,7 +31,9 @@ import {
   assertWritableDestination,
   canonicalPath,
   isPublishedLocation,
+  isSamePath,
   isTrackedFixtureLog,
+  resolveEventDestination,
 } from "./event-destination.ts";
 import { EVENT_SCHEMA_VERSION, appendEvent, migrateEvent } from "./events.ts";
 import type { GonogoEvent, JudgeEvent, OutcomeEvent, RaterEvent } from "./events.ts";
@@ -380,5 +383,255 @@ describe("the private default is gitignored", () => {
       { encoding: "utf8" },
     );
     expect(tracked.status).not.toBe(0);
+  });
+});
+
+describe("a symlink and .. cannot smuggle a subject event into the tracked log", () => {
+  /**
+   * The bypass this describe block exists for, reproduced against 07ec4e5a:
+   *
+   *   ln -s <checkout>/private /tmp/escape
+   *   gonogo judge ... --events /tmp/escape/../events.jsonl
+   *
+   * `path.resolve` collapses `..` before following any symlink, so the boundary
+   * read that destination as `/tmp/events.jsonl` — outside the checkout, allowed
+   * — while `open(2)` followed the symlink first and appended a `real` event to
+   * the committed `events.jsonl` at the checkout root.
+   */
+  function escapeLink(dir: string, target: string): string {
+    const link = join(dir, "escape");
+    symlinkSync(target, link);
+    return link;
+  }
+
+  test("the lexical spelling and the real destination disagree", () => {
+    inTemp((dir) => {
+      mkdirSync(PRIVATE_EVENTS_DIR, { recursive: true });
+      const bypass = `${escapeLink(dir, PRIVATE_EVENTS_DIR)}${sep}..${sep}events.jsonl`;
+      // What a lexical normalizer sees: a file in the temp directory.
+      expect(resolve(bypass)).toBe(join(dir, "events.jsonl"));
+      // What the kernel sees, and what the boundary must therefore see.
+      expect(canonicalPath(bypass)).toBe(canonicalPath(TRACKED_FIXTURE_EVENTS));
+    });
+  });
+
+  for (const [name, make] of SUBJECT_EVENTS) {
+    test(`a ${name} event through the bypass is refused and appends nothing`, () => {
+      inTemp((dir) => {
+        mkdirSync(PRIVATE_EVENTS_DIR, { recursive: true });
+        const bypass = `${escapeLink(dir, PRIVATE_EVENTS_DIR)}${sep}..${sep}events.jsonl`;
+        expect(isTrackedFixtureLog(bypass)).toBe(true);
+        let thrown = "";
+        const before = snapshot();
+        try {
+          appendEvent(bypass, make());
+        } catch (error) {
+          thrown = error instanceof Error ? error.message : String(error);
+        }
+        expect(thrown).toContain("refusing to write");
+        expect(thrown).toContain("the tracked fixture event log");
+        // The message names the file that would really have been written, not
+        // the spelling that was typed.
+        expect(thrown).toContain(canonicalPath(TRACKED_FIXTURE_EVENTS));
+        expect(snapshot()).toEqual(before);
+        // Nothing was created at the lexical spelling either.
+        expect(existsSync(join(dir, "events.jsonl"))).toBe(false);
+      });
+    });
+  }
+
+  test("the same bypass aimed at another public path in the checkout is refused", () => {
+    inTemp((dir) => {
+      mkdirSync(PRIVATE_EVENTS_DIR, { recursive: true });
+      const link = escapeLink(dir, PRIVATE_EVENTS_DIR);
+      const bypass = `${link}${sep}..${sep}calibration${sep}events.jsonl`;
+      expect(isPublishedLocation(bypass)).toBe(true);
+      expectRejected(
+        () => appendEvent(bypass, judgeEvent("real")),
+        "a public location inside the gonogo checkout",
+      );
+      expect(existsSync(join(GONOGO_ROOT, "calibration", "events.jsonl"))).toBe(false);
+    });
+  });
+
+  test("a symlinked directory whose .. leaves the checkout is still allowed", () => {
+    // The boundary is a location, not a ban on symlinks: resolving correctly
+    // must not start refusing destinations the operator legitimately owns.
+    inTemp((dir) => {
+      const outside = join(dir, "outside");
+      mkdirSync(join(outside, "logs"), { recursive: true });
+      const link = escapeLink(dir, join(outside, "logs"));
+      const path = `${link}${sep}..${sep}events.jsonl`;
+      expect(canonicalPath(path)).toBe(canonicalPath(join(outside, "events.jsonl")));
+      appendEvent(path, judgeEvent("real"));
+      expect(readFileSync(join(outside, "events.jsonl"), "utf8")).toContain('"kind":"real"');
+    });
+  });
+});
+
+describe("the checked file is the written file", () => {
+  test("normalizing an already-normalized destination changes nothing", () => {
+    // `appendEvent` and the CLI each normalize the same `--events` value. They
+    // agree only because normalization is idempotent.
+    inTemp((dir) => {
+      const once = canonicalPath(join(dir, "a", "b", "events.jsonl"));
+      expect(canonicalPath(once)).toBe(once);
+      expect(isSamePath(once, join(dir, "a", "b", "events.jsonl"))).toBe(true);
+    });
+  });
+
+  test("an allowed write lands at exactly the destination that was validated", () => {
+    inTemp((dir) => {
+      // A symlinked directory outside the checkout, with the last two path
+      // components not yet created: the existence check, the mkdir and the
+      // append must all use the destination the boundary approved.
+      const target = join(dir, "target");
+      mkdirSync(target, { recursive: true });
+      const link = join(dir, "link");
+      symlinkSync(target, link);
+      const asked = join(link, "nested", "events.jsonl");
+
+      const validated = resolveEventDestination(asked, "real");
+      expect(validated).toBe(canonicalPath(join(target, "nested", "events.jsonl")));
+      expect(existsSync(validated)).toBe(false);
+
+      appendEvent(asked, judgeEvent("real"));
+
+      expect(readFileSync(validated, "utf8").trim().split("\n")).toHaveLength(1);
+      expect(JSON.parse(readFileSync(validated, "utf8")).kind).toBe("real");
+    });
+  });
+
+  test("the duplicate-run check reads the destination that was validated", () => {
+    inTemp((dir) => {
+      // Reading one file and appending to another would let a duplicate run_id
+      // through. Through a symlink, both must be the same file.
+      const target = join(dir, "target");
+      mkdirSync(target, { recursive: true });
+      const link = join(dir, "link");
+      symlinkSync(target, link);
+      appendEvent(join(target, "events.jsonl"), judgeEvent("real"));
+      expect(() => appendEvent(join(link, "events.jsonl"), judgeEvent("real"))).toThrow(
+        'judge run_id "run-real" already exists',
+      );
+      expect(readFileSync(join(target, "events.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
+    });
+  });
+});
+
+describe("the CLI defaults route subject events to the private log", () => {
+  /**
+   * These run against a stand-in checkout so the default destination is inside
+   * a temporary directory. Asserting on the real `private/events.jsonl` would
+   * mean writing test events into the operator's own log.
+   */
+  function inTempCheckout(fn: (checkout: string) => void): void {
+    const checkout = mkdtempSync(join(tmpdir(), "gonogo-default-route-"));
+    try {
+      cpSync(join(GONOGO_ROOT, "src"), join(checkout, "src"), { recursive: true });
+      cpSync(join(GONOGO_ROOT, "package.json"), join(checkout, "package.json"));
+      // The tracked fixture log of the stand-in checkout, empty and watched.
+      writeFileSync(join(checkout, "events.jsonl"), "");
+      fn(checkout);
+    } finally {
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  }
+
+  function run(checkout: string, args: string[], cwd = checkout) {
+    const result = spawnSync("bun", ["run", join(checkout, "src", "cli.ts"), ...args], {
+      encoding: "utf8",
+      cwd,
+    });
+    return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+  }
+
+  const privateLogOf = (checkout: string) => join(checkout, "private", "events.jsonl");
+
+  test("outcome with no --events writes the private log and not the tracked log", () => {
+    inTempCheckout((checkout) => {
+      const result = run(checkout, [
+        "outcome", "--task", "t", "--pr", "https://example.invalid/pr/1", "--state", "closed",
+      ]);
+      expect(result.status).toBe(0);
+      expect(readFileSync(privateLogOf(checkout), "utf8")).toContain('"kind":"outcome"');
+      expect(readFileSync(join(checkout, "events.jsonl"), "utf8")).toBe("");
+      // The path it reports is the path it wrote.
+      expect(result.stdout).toContain(canonicalPath(privateLogOf(checkout)));
+    });
+  });
+
+  test("outcome with no --events refuses a run id the private log does not hold", () => {
+    inTempCheckout((checkout) => {
+      const result = run(checkout, [
+        "outcome", "--task", "t", "--pr", "https://example.invalid/pr/1",
+        "--state", "closed", "--run", "no-such-run",
+      ]);
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain(canonicalPath(privateLogOf(checkout)));
+      expect(existsSync(privateLogOf(checkout))).toBe(false);
+    });
+  });
+
+  test("judge with no --events reads and would write the private log", () => {
+    inTempCheckout((checkout) => {
+      // Seeded only in the private log. The collision proves which file the
+      // default destination named, before any evidence or judge call.
+      mkdirSync(join(checkout, "private"), { recursive: true });
+      writeFileSync(privateLogOf(checkout), JSON.stringify(judgeEvent("real")) + "\n");
+      const result = run(checkout, [
+        "judge", "--spec", "do the thing", "--repo", join(checkout, "no-such-repo"),
+        "--run", "run-real",
+      ]);
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain('judge run_id "run-real" already exists in');
+      expect(result.stderr).toContain(canonicalPath(privateLogOf(checkout)));
+      expect(result.stderr).not.toContain("not a git repository");
+      expect(readFileSync(join(checkout, "events.jsonl"), "utf8")).toBe("");
+    });
+  });
+
+  test("judge with no --events is not refused by the boundary", () => {
+    inTempCheckout((checkout) => {
+      // The default destination is permitted, so the run proceeds far enough to
+      // fail on the subject repository instead.
+      const result = run(checkout, [
+        "judge", "--spec", "do the thing", "--repo", join(checkout, "no-such-repo"),
+      ]);
+      expect(result.status).toBe(3);
+      expect(result.stderr).not.toContain("refusing to write");
+      expect(result.stderr).toContain("not a git repository");
+    });
+  });
+
+  test("eval with no --events keeps the tracked fixture log as its default", () => {
+    inTempCheckout((checkout) => {
+      // Nothing is swept here; --only names no fixture, so eval fails on the
+      // fixtures directory. What matters is that the tracked default is not
+      // refused for a fixture sweep.
+      const result = run(checkout, ["eval", "--replay", "--only", "no-such-fixture"]);
+      expect(result.stderr).not.toContain("refusing to write");
+    });
+  });
+
+  test("the calibrate hint compares paths canonically, not textually", () => {
+    inTempCheckout((checkout) => {
+      const ratings = join(checkout, "ratings");
+      mkdirSync(ratings, { recursive: true });
+      mkdirSync(join(checkout, "private"), { recursive: true });
+      writeFileSync(privateLogOf(checkout), "");
+      // A symlink to private/: a different string, the same file.
+      symlinkSync(join(checkout, "private"), join(checkout, "plink"));
+
+      const withDefault = run(checkout, ["calibrate", "--dir", ratings]);
+      expect(withDefault.stdout).toContain("A private event log exists");
+
+      const throughLink = run(checkout, [
+        "calibrate", "--dir", ratings, "--events", join(checkout, "plink", "events.jsonl"),
+      ]);
+      // It is already reading the private log; telling it to include the
+      // private log would be wrong.
+      expect(throughLink.stdout).not.toContain("A private event log exists");
+    });
   });
 });
