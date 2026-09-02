@@ -78,3 +78,36 @@ described correctly; the unclosed cases are named as unclosed; the scoring
 instrument, the fixtures and the replay store are unchanged; the deterministic
 gates pass; one self-judge verdict exists and is committed unedited; and PR #5
 is updated on the corrected base without being merged.
+
+## Second correction round — the dangling final symlink
+
+Review of the corrected boundary found a second way past it, verified before
+this round began.
+
+`canonicalPath` runs `realpath` on each prefix and keeps the lexical spelling
+when that fails. `realpath` fails on a symlink whose target does not exist, so
+a dangling link kept its own spelling. A link outside the checkout pointing at
+a path inside it was therefore approved as "outside the checkout", and
+`appendFileSync` then followed the link and created its target inside the
+public checkout. Reproduced against the restacked head `2b57307`: the link
+resolved to itself, `isPublishedLocation` was false, the write succeeded, and
+the target existed inside the checkout afterwards holding the `real` event.
+
+### Requirements
+
+1. Reproduce the dangling-final-symlink bypass before correcting it.
+2. Resolve such a component instead of keeping its spelling: read the link and
+   continue the walk at the target, so the destination the policy decides on is
+   the file `open(2)` will create. A link chain that never resolves is refused.
+3. Add regression coverage that fails before the correction and proves the
+   public-checkout target remains absent.
+4. Preserve the symlink-plus-`..` regression, the explicit private and outside
+   destinations, the tracked-log protection, the CLI defaults, the canonical
+   `calibrate` comparison and the replay fixtures.
+5. Claim nothing more. Final-component TOCTOU, alternate mount aliases,
+   case-insensitive filesystems on Linux and the `runs/` output remain
+   unclosed and are still named as unclosed.
+6. Change no prompt, rubric, dimension, score, threshold, model or unrelated
+   event semantic, and add no dependency. Preserve every commit, every earlier
+   receipt and both failed self-judge attempts. No further self-judge is run
+   this round.

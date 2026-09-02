@@ -101,6 +101,14 @@ A differently cased name, a symlink to the log, a symlink to the checkout, and
 a hard link (which has no link to resolve and is caught by device and inode
 instead) all resolve to the file they would really write.
 
+A symlink whose target does not exist yet is resolved the same way. `realpath`
+fails on one, so it used to keep its own spelling — a link outside the checkout
+pointing at a path inside it read as outside, while `appendFileSync` followed
+the link and created its target in the public checkout. Such a component is now
+expanded by reading the link and continuing the walk at the target, so a
+dangling link normalizes to the file it will create. A link chain that never
+resolves is refused rather than falling back to a spelling that names no file.
+
 Three things the boundary does not close, and does not claim to:
 
 - **Final-component TOCTOU.** The decision reflects the filesystem at the
