@@ -271,3 +271,53 @@ so the replay gate is the applicable instrument check. It does change where a
 live `judge` run records its event, which is the one behaviour a live
 self-judge would also exercise: whoever runs it should confirm the event lands
 in `private/events.jsonl` and not in the tracked log.
+
+## session-009 — self-judge attempted once, blocked on authentication
+
+The review correction on the real-event-privacy branch, specified in
+`SPEC-REAL-EVENT-PRIVACY-CORRECTION.md` and diffed against `a586c24`, the
+corrected head of `hardening/calibration-provenance` this branch is stacked on.
+
+**No self-judge verdict exists for this change.** Rule 6's self-judge was run
+once, and only once:
+
+    GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-REAL-EVENT-PRIVACY-CORRECTION.md --base a586c24 \
+      --out runs/session-009-correction
+
+Evidence collection succeeded — 10 changed files, 149,746 characters of diff,
+no truncation — and the test command (`bunx tsc --noEmit` plus the k=3 replay
+sweep into the run directory) exited 0. The blind pass completed. The rubric
+pass terminated with `claude exited 1: Not logged in · Please run /login`,
+while `claude auth status` reported a logged-in `claude.ai` Max subscription,
+`apiProvider: firstParty`, both before and after the run. This is the same
+fault session-007 hit on the sibling branch.
+
+It is an authentication fault in the judge subprocess, not a verdict. It is
+recorded as-is and the run was not repeated: rerunning to obtain a verdict
+would spend a second sample on the same change, which is the reroll rule 6
+exists to forbid. No judge event was written, because the run aborted before
+`appendEvent` was reached; the private log the default would have used does not
+exist. The retained evidence snapshot is under `runs/session-009-correction/`,
+which is gitignored. The tool records cost only on a completed run, so the cost
+of the blind pass that did complete is unrecorded.
+
+What did run, on the restacked branch head `cfa3c6f`: `bunx tsc --noEmit`
+clean; `bun test` 189 pass, 0 fail, 695 assertions, of which 47 are the
+destination-boundary tests and 16 are new in this correction;
+`GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay --k 3` 21/21
+verdicts, zero hard failures, every published floor cleared, gate PASS,
+identical to both earlier rounds; the tracked event log reads 721 events with 0
+malformed lines, all migrating to schema v5, and every line this branch appends
+is `kind: fixture`; all 318 committed JSON files parse; `gonogo calibrate`
+still reports 0 judge-versus-human pairs; and a scan of the diff found no
+credential, key, address, or employer or client reference.
+
+The reported defect was reproduced against `07ec4e5a` before it was corrected:
+a symlink into the checkout followed by `..` was approved as a path outside the
+checkout and appended a `real` subject event to the committed `events.jsonl`.
+The regression tests for it fail against `07ec4e5a` and pass against the
+correction. The correction changes no prompt, dimension, threshold, model,
+fixture or retained receipt, so the replay gate is the applicable instrument
+check. Whoever merges should run the live self-judge, or record that they
+accepted the merge without one.
