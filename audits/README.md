@@ -244,3 +244,30 @@ The correction changes no prompt, dimension, threshold, model, fixture or
 receipt, so the replay gate is the applicable instrument check. The self-judge
 verdict is `hold`; whoever merges is accepting a `hold` with its stated reason,
 not a `go`.
+
+## session-008 — self-judge not run
+
+The real-event-privacy branch, stacked on `hardening/calibration-provenance`.
+Recorded as session-007 on this branch before it was rebased; renumbered when
+the corrected base took that number, with the record otherwise unchanged.
+
+**No self-judge verdict exists for this change**, for the same reason as
+session-006: `scripts/self-judge.sh` invokes a live judge and this session was
+instructed not to incur paid usage. The absence is recorded rather than filled
+with a replayed verdict of different code.
+
+What did run, on the branch head: `bunx tsc --noEmit` clean; `bun test` 166
+pass, 0 fail, 615 assertions, of which 32 are the new destination-boundary
+tests; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay --k 3`
+21/21 verdicts, zero hard failures, every published floor cleared, gate PASS,
+identical to the recorded baseline; the tracked event log reads 679 events with
+0 malformed lines at schema v5, and the 21 lines this branch appends are all
+`kind: fixture`; every committed fixture, label, threshold and manual-rating
+JSON file parses; and a scan of the diff found no credential, key, address, or
+employer or client reference.
+
+The branch changes no prompt, dimension, threshold, model or retained receipt,
+so the replay gate is the applicable instrument check. It does change where a
+live `judge` run records its event, which is the one behaviour a live
+self-judge would also exercise: whoever runs it should confirm the event lands
+in `private/events.jsonl` and not in the tracked log.
