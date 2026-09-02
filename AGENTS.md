@@ -83,6 +83,16 @@ which comes before the code.
 `calibrate` read. One event per judge invocation, per rater, per recorded
 outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 
+That file is committed and public, so it takes fixture events only. A `real`,
+`rater` or `outcome` event describes somebody's actual work and defaults
+instead to `private/events.jsonl`, which is gitignored. `appendEvent` refuses
+to write those kinds to any path inside this checkout outside `private/`,
+whatever the spelling — `..`, a differently cased name and a symlink all
+resolve to the file they would really write. `src/event-destination.ts` is that
+boundary and `src/event-privacy.test.ts` is its test. The historical `real`,
+`rater` and `outcome` lines already in the tracked log are this repository's own
+self-judgements and stay where they are; the log is never rewritten.
+
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
   `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,
   latency, tokens and cost, and `rater_id: judge:<backend>`.
@@ -95,11 +105,14 @@ outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
   `synthetic: true` migrates to `rater_kind: "synthetic"`, because that record
   does state who wrote it. A new event may not be recorded as `undeclared`.
 - Outcome events (`kind: outcome`) record what happened to the work:
-  `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`.
+  `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`,
+  which records to the private log unless `--events` names another safe path.
   A supplied run must resolve to a real judge event carrying the same task id.
   Recorded by hand.
 
-`calibrate` also discovers `human.json` recursively under a target repository's
+`calibrate` reads whichever log `--events` names and defaults to the target
+repository's `events.jsonl`; point it at `private/events.jsonl` to include real
+runs. It also discovers `human.json` recursively under a target repository's
 `runs/` and `calibration/`. Those files carry `rater_kind` too. A standalone
 rating is printed with its notes, under a heading naming its rater kind, but is
 never counted as agreement; only a same-run, same-evidence pair is calibration,
