@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCalibrate } from "./calibrate.ts";
+import { EVENT_SCHEMA_VERSION } from "./events.ts";
 
 const SCORES = {
   task_satisfaction: 4,
@@ -48,6 +49,7 @@ function human(runId: string): Record<string, unknown> {
     schema: "gonogo/human@1",
     run_id: runId,
     reviewer: "human:owen",
+    rater_kind: "human",
     recorded_at: "2026-08-31T00:00:00Z",
     dimensions: { ...SCORES },
   };
@@ -92,12 +94,13 @@ function judge(runId: string, promptHash: string, scores = SCORES): Record<strin
 
 function rater(runId: string): Record<string, unknown> {
   return {
-    schema_version: 2,
+    schema_version: EVENT_SCHEMA_VERSION,
     ts: "2026-08-31T00:01:00Z",
     kind: "rater",
     gonogo_version: "0.1.0",
     run_id: runId,
     rater_id: "human:owen",
+    rater_kind: "human",
     scores: { ...SCORES },
   };
 }
@@ -146,8 +149,8 @@ test("discovers a legacy directory pair and reports its instrument", () => {
       "instrument: gonogo=0.1.0; backend=claude-cli; model=claude-sonnet-5",
     );
     expect(output).toContain("prompts/rubric-pass.md=prompt-v1");
-    expect(output).toContain("rater pair: judge:claude-cli vs human:owen   (1 run)");
-    expect(output).toContain("1 comparison(s), 1 real");
+    expect(output).toContain("rater pair: judge:claude-cli [LLM] vs human:owen [human]   (1 run)");
+    expect(output).toContain("1 comparison(s), 1 real, 1 of them judge-vs-human");
   });
 });
 
@@ -158,7 +161,7 @@ test("accepts an explicit artifact run_id that differs from its directory name",
 
     const output = runCalibrate({ eventsPath: join(dir, "missing.jsonl"), dirs: [runs] });
 
-    expect(output).toContain("1 comparison(s), 1 real");
+    expect(output).toContain("1 comparison(s), 1 real, 1 of them judge-vs-human");
     expect(output).toContain("custom-run");
   });
 });
@@ -266,7 +269,7 @@ test("partitions the same rater pair by prompt, model, and backend identity", ()
     const output = runCalibrate({ eventsPath, dirs: [] });
 
     expect(output.match(/^instrument: /gm)).toHaveLength(4);
-    expect(output.match(/rater pair: judge:claude-cli vs human:owen   \(1 run\)/g)).toHaveLength(4);
+    expect(output.match(/rater pair: judge:claude-cli \[LLM\] vs human:owen \[human\]   \(1 run\)/g)).toHaveLength(4);
     expect(output).toContain("backend=claude-api; model=claude-sonnet-5");
     expect(output).toContain("backend=claude-cli; model=claude-sonnet-6");
     expect(output).not.toContain("(4 runs)");
@@ -286,7 +289,7 @@ test("keeps live repair and no-repair runs in one instrument identity", () => {
     const output = runCalibrate({ eventsPath, dirs: [] });
 
     expect(output.match(/^instrument: /gm)).toHaveLength(1);
-    expect(output).toContain("rater pair: judge:claude-cli vs human:owen   (2 runs)");
+    expect(output).toContain("rater pair: judge:claude-cli [LLM] vs human:owen [human]   (2 runs)");
     expect(output).toContain("prompts/citation-repair.md=" + "4".repeat(64));
     expect(output).toContain("prompts/citation-repair.schema.json=" + "5".repeat(64));
   });
@@ -335,7 +338,7 @@ test("the calibrate CLI reads the target repository event log by default", () =>
     );
 
     expect(output).toContain("target-run");
-    expect(output).toContain("1 comparison(s), 1 real");
+    expect(output).toContain("1 comparison(s), 1 real, 1 of them judge-vs-human");
   });
 });
 
@@ -383,6 +386,6 @@ test("deduplicates byte-equivalent ratings", () => {
     ]);
 
     const output = runCalibrate({ eventsPath, dirs: [] });
-    expect(output).toContain("1 comparison(s), 1 real");
+    expect(output).toContain("1 comparison(s), 1 real, 1 of them judge-vs-human");
   });
 });

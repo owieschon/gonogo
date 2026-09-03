@@ -18,6 +18,7 @@ RUBRIC.md:
   "schema": "gonogo/human@1",
   "run_id": "2026-09-02T10-14-33-000Z",
   "reviewer": "your-handle",
+  "rater_kind": "human",
   "recorded_at": "2026-09-02T10:41:00Z",
   "dimensions": {
     "task_satisfaction": 2,
@@ -31,7 +32,9 @@ RUBRIC.md:
 ```
 
 Any dimension may be `"abstain"`. You may also record `review_minutes` (how long
-the review took) and free-text `notes`. Then, from any directory:
+the review took) and free-text `notes`.
+
+Then, from any directory:
 
     gonogo calibrate --repo /path/to/the/target-repo
 
@@ -48,28 +51,65 @@ any other (`judge:claude-cli`), which is why adding a second judge later is data
 and not code. Any run with a cached pass is excluded: serving the same judgement
 twice is not a second observation.
 
+## rater_kind
+
+`rater_kind` says who wrote the scores: `human` if a person read the evidence
+and wrote them, `llm` if a language model did, `synthetic` for hand-written
+demo data that scores no real run. It is declared, never inferred — a reviewer
+handle says nothing about whether a person or a model is behind it, and reading
+an AI review as human calibration would misstate the one number this project
+treats as trust currency.
+
+Only a `human` rating paired with a gonogo judge run on the same evidence
+counts as judge-versus-human calibration. A human rating paired with an LLM
+review is two reviews of one run, reported under its own name. `gonogo
+calibrate` reports that count, reports every other kind of pair under its own
+name, and never pools the two.
+
+A rating written before the field existed is `undeclared`. The one exception is
+a v1-v4 rater event in `events.jsonl` that already declared `synthetic: true`,
+which migrates to `synthetic`; a legacy `human.json` with no `rater_kind` is
+`undeclared` whatever else it declares. Undeclared is the absence of a
+classification, not a person: undeclared ratings are listed and excluded from
+every figure rather than being read as human, and a pair holding one is
+excluded whatever the other side is. Re-record such a rating with an
+explicit `rater_kind` to make it countable.
+
 ## synthetic/
 
 Hand-written pairs that exercise the aggregation. Every one carries
-`"synthetic": true` and `gonogo calibrate` refuses to mix them into real
-statistics — while no real pairs exist it prints them under a banner saying the
-numbers measure nothing. They are here so the command is testable on day one,
+`"synthetic": true` and `"rater_kind": "synthetic"`, and `gonogo calibrate`
+refuses to mix them into real statistics — while no real pairs exist it prints
+them under a banner saying the numbers measure nothing. They are here so the command is testable on day one,
 not so it has something to report.
 
-**n=0 real pairs as of the first commit.**
+**n=0 judge-versus-human pairs. No human has recorded a rating against a real
+gonogo run.**
 
 ## Ratings without a matching judge run
 
 A directory holding only `human.json` is still read. `gonogo calibrate` finds
 rating directories recursively under `runs/` and `calibration/`, and prints any
-human rating that has no counterpart under "human ratings with nothing to
-compare against", with its notes.
+rating that has no counterpart with its notes, under a heading naming the kind
+of rater that wrote it — human ratings and LLM-written ratings are listed
+separately and never under one another's heading.
 
 Such a rating is review effort, not agreement, and it is never mixed into the
 statistics. To turn one into a calibration pair, judge the same evidence and
 record it under the same `run_id`, so both raters scored the same thing.
 
-`calibration/manual-pr-1/` is an example: an independent retrospective review
-of PR #1's final tree. It was written before the agent's closing self-review but
-after the automated HOLD had been disclosed, so it is neither blind nor a
-same-evidence pair and is not calibration data.
+`calibration/manual-pr-1/` and `calibration/manual-pr-2/` are the two examples,
+and both were **written by a language model**, not by a person. They carry
+`"rater_kind": "llm"` with their original reviewer handle, timestamp and notes
+intact.
+
+- `manual-pr-1/`: an independent retrospective review of PR #1's final tree by
+  `codex`, written before the agent's closing self-review but after the
+  automated HOLD had been disclosed. Neither blind nor a same-evidence pair.
+- `manual-pr-2/`: an independent pre-disclosure review of PR #2 by
+  `claude-code-uhg22r`, recorded before reading the verdict, with four of five
+  dimensions abstained for a missing spec.
+
+Both are AI review effort. Neither is human calibration, and neither may be
+re-keyed into it: `src/rater-kind.test.ts` pins both files to `llm` and fails if
+either is relabelled.

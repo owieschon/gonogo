@@ -2,6 +2,7 @@
   "schema": "gonogo/human@1",
   "run_id": "synthetic-004-abstention",
   "reviewer": "synthetic",
+  "rater_kind": "synthetic",
   "recorded_at": "2026-08-31T12:15:00Z",
   "synthetic": true,
   "dimensions": {

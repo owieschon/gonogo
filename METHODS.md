@@ -27,21 +27,29 @@ disagreeing with the judge.
 
 1. After every real judged run, the operator records their own verdict as
    `runs/<ts>/human.json`, using the same four dimensions and the same 0–4
-   anchors in RUBRIC.md. The schema is in `src/types.ts` (`HumanFile`) and an
-   example is in `calibration/synthetic/`.
+   anchors in RUBRIC.md. The schema is in `src/types.ts` (`ManualRatingFile`)
+   and an example is in `calibration/synthetic/`.
 2. The human verdict is recorded **after reading the diff and before reading
    the judge's verdict**, and the file records who reviewed it. A human score
    written after reading the machine's score measures anchoring, not agreement.
-3. `gonogo calibrate` recursively discovers human ratings. A standalone rating
+3. Every manual rating declares `rater_kind`: `human`, `llm`, or `synthetic`.
+   Who wrote a rating is recorded, never inferred from the reviewer handle, and
+   only a `human` rating paired with a gonogo judge run on the same evidence is
+   judge-versus-human calibration. A human rating paired with a standalone LLM
+   review is not: neither side of that pair is the instrument under test, so it
+   is reported under its own name. AI-written reviews are kept and reported
+   separately; a rating with no declared kind is excluded from every figure
+   rather than being read as human, and so is any pair holding one.
+4. `gonogo calibrate` recursively discovers manual ratings. A standalone rating
    is shown as review evidence but never counted as agreement. A directory that
    also holds the same run's `verdict.json` reports, per dimension: exact
    agreement, agreement within one point, mean absolute difference, and the
    direction of disagreement — how often the judge was harsher than the human
    and how often the reverse.
-4. Disagreements are published individually, not just in aggregate. A summary
+5. Disagreements are published individually, not just in aggregate. A summary
    statistic hides the cases that matter most, which are the ones where the
    judge was confidently wrong.
-5. Target: 30 days of real usage before any accuracy claim is made about the
+6. Target: 30 days of real usage before any accuracy claim is made about the
    judge. Until then the honest statement is the one in the README — the judge
    is uncalibrated, and `gonogo eval` measures only agreement with hand-written
    fixture labels, which is a much weaker claim.
@@ -66,6 +74,16 @@ quote that preserved one exact line break while joining one other continuation;
 preserving existing LF/CRLF bytes during the same one-boundary recovery
 identifies the tree as 0.1.6. Runs across versions are reported separately and
 never pooled silently into one agreement figure.
+
+### AI review is not human calibration
+
+Two independent reviews of this repository's own pull requests are committed
+under `calibration/`. Both were written by language models — `codex` on PR #1
+and `claude-code-uhg22r` on PR #2 — and both are recorded as
+`"rater_kind": "llm"`. They are useful review effort and they are kept in full,
+with their reviewer handles, timestamps and notes intact. They are not human
+calibration and are never counted as any part of it. Two AI reviews exist;
+zero judge-versus-human pairs do.
 
 ### Known limits
 
@@ -92,4 +110,5 @@ detector, not a fire department. Full argument in DESIGN.md.
 `gonogo eval` measures the judge against seven labels that the same person wrote
 who wrote the prompts. That is a regression test, not evidence of accuracy. It
 can prove the judge got worse; it cannot prove it is right. Only the
-judge-versus-human agreement in section 2 can begin to do that, and n=0 today.
+judge-versus-human agreement in section 2 can begin to do that, and n=0 today:
+no human has recorded a rating against a real gonogo run.

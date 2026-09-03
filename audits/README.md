@@ -129,3 +129,118 @@ concrete case for a model-independent applicability key: a verdict needs to
 bind the complete assigned specification and inspected evidence before a
 consumer may act on it. Until that contract exists, the human review and the
 correctly scoped deterministic gates remain the merge authority.
+
+## session-006 — self-judge not run
+
+The calibration-provenance branch, specified in `SPEC-CALIBRATION-PROVENANCE.md`
+and diffed against `main`.
+
+**No self-judge verdict exists for this change.** Rule 6 requires one, and it
+was not run: `scripts/self-judge.sh` invokes a live judge, and this session was
+instructed not to incur paid usage. The preceding session's session-004 audit
+records that a comparable whole-branch self-judge cost $4.08. Recording the
+absence is the honest outcome; substituting a replayed verdict would be a
+cached judgement of different code, and inventing one is not an option.
+
+What did run, on the branch head, is every deterministic gate the repository
+defines: `bunx tsc --noEmit` clean; `bun test` 134 pass, 0 fail, 535
+assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
+--k 3` 21/21 verdicts with zero hard failures and every published floor
+cleared, gate PASS; the event log reads 658 events with 0 malformed lines at
+schema v5, measured at `141d232`; all 318 committed JSON files parse at that
+same commit and every committed manual
+rating validates against the rater-kind rules; and a scan of the diff found no
+credential, key, email address, or employer or client reference.
+
+The branch changes no prompt, dimension, threshold, model or receipt, so the
+replay gate is the applicable instrument check. Whoever merges should run the
+live self-judge, or record that they accepted the merge without one.
+
+## session-007 — self-judge run twice: blocked, then completed
+
+The review correction on the calibration-provenance branch, specified in
+`SPEC-CALIBRATION-PROVENANCE-CORRECTION.md` and diffed against `141d232`, the
+branch head the correction was applied to.
+
+Rule 6's self-judge was invoked twice for this change: once as specified, which
+failed to authenticate and produced no verdict, and once more after the
+authentication fault was fixed outside the repository. Both attempts are
+recorded. The verdict below is the first and only verdict this change received;
+no verdict was discarded and none was rerolled for a better score.
+
+### Attempt 1 — blocked on authentication, no verdict
+
+    GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-CALIBRATION-PROVENANCE-CORRECTION.md --base 141d232
+
+Evidence collection succeeded — 8 changed files, 55,627 characters of diff —
+and the test command exited 0. The blind pass completed. The rubric pass
+terminated with `claude exited 1: Not logged in · Please run /login`, while
+`claude auth status` reported a logged-in `claude.ai` subscription both before
+and after the run. The failure is an authentication fault in the judge
+subprocess, not a verdict. It is recorded as-is. The retained evidence snapshot
+is under `runs/session-007-correction/`, which is gitignored.
+
+The `GONOGO_CLAUDE_MODEL=claude-sonnet-5` pin matches the model session-004's
+self-judge used and the pin `AGENTS.md` requires for record and replay; without
+it the script's own replay test command misses and the judge would have been
+shown a failing gate.
+
+### The authentication fault
+
+`claude --bare` skips keychain reads, and this machine's `claude.ai`
+subscription credential exists only in the macOS keychain — there is no
+`~/.claude/.credentials.json` and `CLAUDE_CONFIG_DIR` is unset. Bisecting the
+backend's flag set showed `--bare` alone reproduces `Not logged in`, while the
+same call without it succeeds; supplying the credential through
+`CLAUDE_CODE_OAUTH_TOKEN` or as an on-disk credentials file did not help.
+`src/judges/claude.ts` passes `--bare` for prompt-token cost, so this is an
+environment fault, not a repository defect, and it was fixed in the environment:
+a `claude` shim placed first on `PATH` for the retry drops `--bare` and forwards
+every other argument unchanged. Same backend, same model, same prompts, same
+stdin. Nothing in the repository was changed to obtain the verdict.
+
+### Attempt 2 — completed, and this is the verdict
+
+    PATH=<shim>:$PATH GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-CALIBRATION-PROVENANCE-CORRECTION.md --base 141d232
+
+9 changed files, 58,247 characters of diff, test command exited 0, both passes
+live, no receipt reused.
+
+**Verdict: `hold`, overall 2/4.** task_satisfaction 4, scope_discipline 4,
+claim_verification 2, goal_alignment 4, spec_clarity 4. Judge confidence 0.75,
+`drift_type` `none`. Model `claude-sonnet-5`, cost $0.9576262, run
+`2026-09-02T16-22-17-933Z`, 4m03s. Committed unedited as
+`audits/session-007-self-verdict.json` and `.html`.
+
+The 2 is `claim_verification`, and it is a fair finding. The commit message for
+`6317515` asserts `bun test` counts and a `gonogo calibrate` result that the
+evidence packet does not contain: the self-judge's `--test-cmd` runs only
+`bunx tsc --noEmit` and the replay eval, so the judge saw no proof of those two
+claims. They are true and reproducible, but the judge was right that they were
+unsupported in the evidence it was shown. The lesson belongs to how the claims
+were written, not to the code. The verdict is committed as it came back and the
+run was not repeated to improve it.
+
+### Deterministic gates
+
+Run on the corrected branch head: `bunx tsc --noEmit` clean; `bun test` 142 pass, 0 fail, 563
+assertions; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay
+--k 3` 21/21 verdicts with zero hard failures and every published floor
+cleared, gate PASS; `gonogo calibrate` still reporting 0 judge-versus-human
+pairs; and a scan of the diff finding no credential, key, employer or client
+reference.
+
+Event log and artefact counts at this head, `main...HEAD`: `events.jsonl` is
+`+43 -0` against `main`, growing from 637 to 680 lines with 0 malformed. The 43
+are three appends — 21 from session-006's replay gate at `a98cf03`, 21 from the
+correction's replay gate at `6317515`, and the single live judge event from the
+completed self-judge at `e272d1b`. All 319 committed `.json` files parse, one
+more than session-006 counted because `audits/session-007-self-verdict.json` is
+now among them.
+
+The correction changes no prompt, dimension, threshold, model, fixture or
+receipt, so the replay gate is the applicable instrument check. The self-judge
+verdict is `hold`; whoever merges is accepting a `hold` with its stated reason,
+not a `go`.

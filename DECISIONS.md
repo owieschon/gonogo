@@ -47,10 +47,20 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
 - **`gonogo calibrate` refuses to mix synthetic pairs into real statistics.**
   With no real pairs it prints them under a banner stating the numbers measure
   nothing, rather than reporting a plausible-looking figure.
-- **Standalone human ratings stay visible but are not calibration pairs.** A
+- **Standalone manual ratings stay visible but are not calibration pairs.** A
   retrospective review is evidence that review happened, not evidence of
   judge agreement. `calibrate` lists it with its notes and waits for a matching
   same-evidence run instead of silently dropping or statistically pairing it.
+- **Rater kind is declared, never inferred from an id.** Every manual rating
+  carries `rater_kind` (`human`, `llm`, `synthetic`), and only a `human` rating
+  paired with a gonogo judge run counts as judge-versus-human calibration; a
+  human rating paired with a standalone LLM review is its own class, because
+  neither side of it is the instrument under test. The
+  alternative — treating any rater id that is not `judge:*` as a person — read
+  this repo's two AI-written reviews as human calibration, which is exactly the
+  claim gonogo exists not to make. A rating recorded before the field existed
+  is `undeclared`: excluded from every figure, never promoted to `human`,
+  because absence of a record is not evidence of a reviewer.
 - **Cross-fixture invariants are not expressible in `labels.json`.** The
   `silent-narrowing` / `honest-partial` task_satisfaction pairing is enforced by
   giving the two fixtures identical label ranges instead. A real paired-check
