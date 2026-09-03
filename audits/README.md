@@ -337,3 +337,47 @@ fixture or retained receipt, so the replay gate is the applicable instrument
 check. Whoever merges is accepting this change without a self-judge verdict,
 and should run one; a live run should confirm its own event lands in
 `private/events.jsonl` and not in the tracked log.
+
+## merge of the hardening stack — accepted without a self-judge verdict
+
+`hardening/calibration-provenance` (PR #4) and `hardening/real-event-privacy`
+(PR #5) were merged into `main` on 2026-09-03, each with a merge commit, by a
+session acting on Owen's explicit authorization to merge his own pull requests.
+
+PR #4 was merged accepting session-007's verdict as it stands: `hold`, overall
+2/4, on `claim_verification`. Not a `go`.
+
+**PR #5 is merged with no self-judge verdict**, which session-008 and
+session-009 above both record as the state of this branch. Session-009's two
+invocations failed in transport — one on authentication, one on the judge's
+ten-minute per-call timeout — and neither produced a verdict. This session did
+not make a third invocation and did not rerun any model verdict: sampling again
+after two failed transports is what rule 6 exists to forbid, and no cached or
+replayed verdict of different code was substituted. Rule 6's live self-judge is
+therefore outstanding on this change, and this record is the acceptance
+`audits/README.md` requires in its place.
+
+### What was verified before merging
+
+Run at `d1f2b5d`, the merged head of PR #5, after `bun install
+--frozen-lockfile`:
+
+- `bunx tsc --noEmit` — clean, exit 0.
+- `bun test` — 196 pass, 0 fail, 721 assertions, 10 files. Higher than
+  session-009's 189/695 because `936ad75` added the dangling-symlink
+  regression tests after that record was written.
+- `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay --k 3` —
+  21/21 verdicts, 0 hard failures, every published floor cleared, quality gate
+  PASS, exit 0. Identical to the recorded baseline.
+- The tracked `events.jsonl` reads 806 events with 0 malformed lines; subject
+  kinds are 796 `fixture`, 5 `real`, 4 `rater`, 1 `outcome`, all pre-existing.
+- All 319 committed `.json` files parse.
+- GitHub CI `check` passed on both heads before either merge.
+
+The replay eval appends fixture events as it runs. The 42 lines this session's
+two verification runs appended were discarded and `events.jsonl` was restored
+to the branch head, so no receipt in this repository was written, altered, or
+removed by the verification. The live self-judge behaviour session-008 asked a
+merger to confirm — that a live `judge` event lands in `private/events.jsonl`
+and not in the tracked log — is still unconfirmed, because no live judge was
+run.
