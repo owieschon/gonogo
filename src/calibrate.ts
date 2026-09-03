@@ -1,16 +1,22 @@
 /**
  * Judge-versus-human agreement, computed over rater events.
  *
- * Everything that scores a run — the judge, a human reviewer, and later a second
- * or third judge in a panel — is a rater with an id. Agreement is computed for
- * every pair of raters that scored the same run, so panel mode is data rather
- * than code. Load-bearing once Run 01 data exists; today it runs on the
- * synthetic pairs and says so.
+ * Everything that scores a run — the judge, a human reviewer, an AI reviewer,
+ * and later a second or third judge in a panel — is a rater with an id and a
+ * declared `rater_kind`. Agreement is computed for every pair of raters that
+ * scored the same run, so panel mode is data rather than code.
+ *
+ * The kind is what keeps the headline number honest. Only a rating declared
+ * `human`, paired with a judge run on the same evidence, is judge-versus-human
+ * calibration; LLM reviews, synthetic demo pairs and ratings with no declared
+ * author are reported under their own names and never pooled into that count.
+ * Load-bearing once Run 01 data exists; today it runs on the synthetic pairs
+ * and says so.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DIMENSIONS } from "./types.ts";
-import type { HumanFile, VerdictFile } from "./types.ts";
+import { DIMENSIONS, RATER_KINDS, UNDECLARED_RATER_KIND, isRaterKind } from "./types.ts";
+import type { ManualRatingFile, StoredRaterKind, VerdictFile } from "./types.ts";
 import { EVENT_SCHEMA_VERSION, isJudgeEvent, isRaterEvent, readEvents } from "./events.ts";
 import type { GonogoEvent } from "./events.ts";
 import { GONOGO_VERSION } from "./version.ts";
@@ -38,7 +44,7 @@ function exactDimensionKeys(value: unknown, label: string): Record<string, unkno
   return record;
 }
 
-function humanScores(value: unknown, label: string): Scores {
+function manualScores(value: unknown, label: string): Scores {
   const dimensions = exactDimensionKeys(value, label);
   return Object.fromEntries(
     DIMENSIONS.map((dimension) => [dimension, score(dimensions[dimension], `${label}.${dimension}`)]),
@@ -64,11 +70,85 @@ function verdictScores(value: unknown, label: string): Scores {
 interface Rating {
   runId: string;
   raterId: string;
+  /**
+   * Declared at the point the rating was read, never derived from the rater id.
+   * A judge run is a machine rating because a judge produced it, not because
+   * its id happens to start with "judge:".
+   */
+  raterKind: StoredRaterKind;
+  /** True for a gonogo judge invocation, as opposed to any other rater. */
+  judgeRun: boolean;
   scores: Scores;
   synthetic: boolean;
-  /** Present only for judge ratings; humans inherit it through the comparison. */
+  /** Present only for judge ratings; other raters inherit it through the comparison. */
   instrument?: InstrumentIdentity;
   notes?: string | null;
+}
+
+const KIND_LABEL: Record<StoredRaterKind, string> = {
+  human: "human",
+  llm: "LLM",
+  synthetic: "synthetic",
+  undeclared: "undeclared",
+};
+
+/**
+ * How a comparison may be described. `judge-vs-human` is the only class that is
+ * calibration in the sense METHODS.md section 2 means; everything else is
+ * reported under its own name so it can never be quoted as one.
+ */
+type PairClass =
+  | "judge-vs-human"
+  | "human-vs-llm"
+  | "human-vs-human"
+  | "machine-vs-machine"
+  | "synthetic"
+  | "undeclared";
+
+const PAIR_CLASS_LABEL: Record<PairClass, string> = {
+  "judge-vs-human": "judge vs human (calibration)",
+  "human-vs-llm": "human vs LLM review, no judge run (not calibration)",
+  "human-vs-human": "human vs human",
+  "machine-vs-machine": "machine vs machine (not human calibration)",
+  synthetic: "synthetic demo data (measures nothing)",
+  undeclared: "undeclared rater (excluded)",
+};
+
+function classifyPair(a: Rating, b: Rating): PairClass {
+  // Undeclared is tested first, and before synthetic. A pair holding one
+  // rating whose author was never recorded says nothing about agreement no
+  // matter what the other side is, so pairing it with synthetic demo data
+  // must not launder it into the synthetic table instead of the exclusion
+  // list.
+  if (a.raterKind === UNDECLARED_RATER_KIND || b.raterKind === UNDECLARED_RATER_KIND) {
+    return "undeclared";
+  }
+  if (a.raterKind === "synthetic" || b.raterKind === "synthetic") return "synthetic";
+  const humans = [a, b].filter((r) => r.raterKind === "human").length;
+  if (humans === 2) return "human-vs-human";
+  // A human rating is calibration only against a gonogo judge run. Paired
+  // with a standalone LLM review — a rater event or a human.json carrying
+  // `rater_kind: "llm"`, neither of which is a judge invocation — it is two
+  // reviews of one run and measures nothing about the instrument.
+  if (humans === 1) return a.judgeRun || b.judgeRun ? "judge-vs-human" : "human-vs-llm";
+  return "machine-vs-machine";
+}
+
+/** Rater ids alone are ambiguous, so every printed pair carries both kinds. */
+function raterPairLabel(a: Rating, b: Rating): string {
+  return `${a.raterId} [${KIND_LABEL[a.raterKind]}] vs ${b.raterId} [${KIND_LABEL[b.raterKind]}]`;
+}
+
+/**
+ * The rater kind of a manual rating file. Absent means undeclared: the record
+ * predates the field, and nothing about the reviewer id licenses guessing.
+ */
+function manualRaterKind(value: unknown, label: string): StoredRaterKind {
+  if (value === undefined) return UNDECLARED_RATER_KIND;
+  if (!isRaterKind(value)) {
+    throw new Error(`${label} must be one of ${RATER_KINDS.join(", ")} when present.`);
+  }
+  return value;
 }
 
 interface InstrumentIdentity {
@@ -124,12 +204,21 @@ function ratingsFromDirs(dir: string): Rating[] {
       out.push(...ratingsFromDirs(runDir));
       continue;
     }
-    const h = JSON.parse(readFileSync(hp, "utf8")) as HumanFile;
-    const reviewerScores = humanScores(h.dimensions, `${hp}.dimensions`);
+    const h = JSON.parse(readFileSync(hp, "utf8")) as ManualRatingFile;
+    const reviewerScores = manualScores(h.dimensions, `${hp}.dimensions`);
     const synthetic = h.synthetic === true;
+    const raterKind = manualRaterKind(h.rater_kind, `${hp}.rater_kind`);
+    if (raterKind !== UNDECLARED_RATER_KIND && (raterKind === "synthetic") !== synthetic) {
+      throw new Error(
+        `${hp}: rater_kind ${JSON.stringify(raterKind)} and synthetic ` +
+          `${JSON.stringify(synthetic)} disagree about who wrote this rating.`,
+      );
+    }
     out.push({
       runId: h.run_id,
       raterId: h.reviewer,
+      raterKind,
+      judgeRun: false,
       scores: reviewerScores,
       synthetic,
       notes: h.notes ?? null,
@@ -156,6 +245,8 @@ function ratingsFromDirs(dir: string): Rating[] {
     out.push({
       runId: artifactRunId,
       raterId: `judge:${v.provenance.judge_backend}`,
+      raterKind: synthetic ? "synthetic" : "llm",
+      judgeRun: true,
       scores: judgeScores,
       synthetic,
       instrument: instrument(
@@ -179,6 +270,8 @@ function ratingsFromEvents(events: GonogoEvent[]): Rating[] {
       out.push({
         runId: e.run_id,
         raterId: e.rater_id,
+        raterKind: e.kind === "fixture" ? "synthetic" : "llm",
+        judgeRun: true,
         scores: e.scores,
         synthetic: e.kind === "fixture",
         instrument: instrument(e.gonogo_version, e.backend, e.model_version, e.prompt_hashes),
@@ -187,6 +280,8 @@ function ratingsFromEvents(events: GonogoEvent[]): Rating[] {
       out.push({
         runId: e.run_id,
         raterId: e.rater_id,
+        raterKind: e.rater_kind,
+        judgeRun: false,
         scores: e.scores,
         synthetic: e.synthetic === true,
         notes: e.notes ?? null,
@@ -230,7 +325,12 @@ export function runCalibrate(o: CalibrateOptions): string {
         : prior.instrument !== undefined &&
           r.instrument !== undefined &&
           instrumentKey(prior.instrument) === instrumentKey(r.instrument);
-    if (!sameScores || prior.synthetic !== r.synthetic || !sameInstrument) {
+    if (
+      !sameScores ||
+      prior.synthetic !== r.synthetic ||
+      prior.raterKind !== r.raterKind ||
+      !sameInstrument
+    ) {
       throw new Error(
         `Conflicting ratings for run ${JSON.stringify(r.runId)}, ` +
           `rater ${JSON.stringify(r.raterId)}.`,
@@ -252,6 +352,8 @@ export function runCalibrate(o: CalibrateOptions): string {
     a: Rating;
     b: Rating;
     synthetic: boolean;
+    pairClass: PairClass;
+    raterPairLabel: string;
     instrumentKey: string;
     instrumentLabel: string;
   }[] = [];
@@ -262,7 +364,7 @@ export function runCalibrate(o: CalibrateOptions): string {
         const second = rs[j]!;
         // Order the pair so a judge is always side A; the direction of
         // disagreement only means something if the sides are stable.
-        const [a, b] = first.raterId.startsWith("judge:") ? [first, second] : [second, first];
+        const [a, b] = first.judgeRun ? [first, second] : [second, first];
         const instruments = [a.instrument, b.instrument]
           .filter((value): value is InstrumentIdentity => value !== undefined)
           .sort((x, y) => instrumentKey(x).localeCompare(instrumentKey(y)));
@@ -272,11 +374,13 @@ export function runCalibrate(o: CalibrateOptions): string {
           a,
           b,
           synthetic: first.synthetic || second.synthetic,
+          pairClass: classifyPair(a, b),
+          raterPairLabel: raterPairLabel(a, b),
           instrumentKey: JSON.stringify(identities.map(instrumentKey)),
           instrumentLabel:
             identities.length > 0
               ? identities.map(instrumentLabel).join(" <> ")
-              : "human-only comparison (no judge instrument)",
+              : "no judge instrument in this comparison",
         });
       }
     }
@@ -284,31 +388,49 @@ export function runCalibrate(o: CalibrateOptions): string {
 
   const out: string[] = [];
   const unscored = [...byRun.values()].filter((rs) => rs.length < 2).length;
-  const orphanHuman = [...byRun.values()]
+  const orphans = [...byRun.values()]
     .filter((ratings) => ratings.length < 2)
     .flatMap((ratings) => ratings)
-    .filter((rating) => !rating.raterId.startsWith("judge:") && !rating.synthetic);
+    .filter((rating) => !rating.judgeRun && !rating.synthetic);
   const anyRealHumanRating = [...seen.values()].some(
-    (rating) => !rating.raterId.startsWith("judge:") && !rating.synthetic,
+    (rating) => !rating.judgeRun && !rating.synthetic && rating.raterKind === "human",
   );
 
+  /**
+   * Unpaired ratings, listed under the kind of rater that wrote each one. An
+   * AI review and a human review are both review effort and neither is
+   * agreement data, but they are never printed under one heading.
+   */
   const orphanBlock = (): string[] => {
-    if (orphanHuman.length === 0) return [];
-    const lines = ["", "human ratings with nothing to compare against"];
-    for (const rating of orphanHuman) {
-      const shown = DIMENSIONS.map(
-        (dimension) => `${dimension} ${rating.scores[dimension]}`,
-      ).join(", ");
-      lines.push(`  ${rating.runId}  by ${rating.raterId}`);
-      lines.push(`    ${shown}`);
-      if (rating.notes) {
-        const note = rating.notes.length > 300 ? `${rating.notes.slice(0, 300)}...` : rating.notes;
-        lines.push(`    ${JSON.stringify(note)}`);
+    if (orphans.length === 0) return [];
+    const headings: Record<string, string> = {
+      human: "human ratings with nothing to compare against",
+      llm: "LLM-written ratings with nothing to compare against (not human calibration)",
+      synthetic: "synthetic ratings with nothing to compare against",
+      undeclared:
+        "ratings with no declared rater kind, with nothing to compare against (excluded)",
+    };
+    const lines: string[] = [];
+    for (const kind of ["human", "llm", "undeclared", "synthetic"] as StoredRaterKind[]) {
+      const group = orphans.filter((rating) => rating.raterKind === kind);
+      if (group.length === 0) continue;
+      lines.push("", headings[kind]!);
+      for (const rating of group) {
+        const shown = DIMENSIONS.map(
+          (dimension) => `${dimension} ${rating.scores[dimension]}`,
+        ).join(", ");
+        lines.push(`  ${rating.runId}  by ${rating.raterId} [${KIND_LABEL[kind]}]`);
+        lines.push(`    ${shown}`);
+        if (rating.notes) {
+          const note = rating.notes.length > 300 ? `${rating.notes.slice(0, 300)}...` : rating.notes;
+          lines.push(`    ${JSON.stringify(note)}`);
+        }
       }
     }
     lines.push(
       "  These are review records, not agreement data. Pair only ratings made from",
-      "  the same evidence snapshot under the same run_id.",
+      "  the same evidence snapshot under the same run_id, and only a human rating",
+      "  paired with a judge run is human calibration.",
     );
     return lines;
   };
@@ -317,6 +439,7 @@ export function runCalibrate(o: CalibrateOptions): string {
     return [
       "No double-scored runs found.",
       "",
+      "judge-vs-human calibration pairs: 0",
       `${byRun.size} run(s) carry exactly one rating, so there is nothing to compare.`,
       "Agreement needs two raters on the same run: the judge, and you.",
       ...orphanBlock(),
@@ -330,10 +453,44 @@ export function runCalibrate(o: CalibrateOptions): string {
       .join("\n");
   }
 
-  const real = pairs.filter((p) => !p.synthetic);
-  const synth = pairs.filter((p) => p.synthetic);
+  // An undeclared rater has no recorded author, so its comparisons are held out
+  // of every figure rather than being attributed to whichever kind would be
+  // convenient. The exclusion is applied before the synthetic split, so a pair
+  // that is both undeclared and synthetic is excluded and listed rather than
+  // scored in the synthetic table. They are listed below so the exclusion is
+  // visible, not silent.
+  const undeclared = pairs.filter((p) => p.pairClass === "undeclared");
+  const declared = pairs.filter((p) => p.pairClass !== "undeclared");
+  const synth = declared.filter((p) => p.synthetic);
+  const real = declared.filter((p) => !p.synthetic);
+  const humanPairs = real.filter((p) => p.pairClass === "judge-vs-human");
 
-  if (real.length === 0) {
+  // The count that may never be inflated: only a declared human rating paired
+  // with a judge run on the same evidence is judge-versus-human calibration.
+  out.push(`judge-vs-human calibration pairs: ${humanPairs.length}`);
+  for (const pairClass of [
+    "human-vs-llm",
+    "human-vs-human",
+    "machine-vs-machine",
+  ] as PairClass[]) {
+    const count = real.filter((p) => p.pairClass === pairClass).length;
+    if (count > 0) out.push(`${PAIR_CLASS_LABEL[pairClass]} pairs: ${count}`);
+  }
+  if (undeclared.length > 0) {
+    out.push(`pairs excluded for an undeclared rater kind: ${undeclared.length}`);
+  }
+  if (humanPairs.length === 0) {
+    out.push(
+      "No human has recorded a same-evidence rating against a judge run, so gonogo",
+      "is uncalibrated against human review. Any figure below is something else.",
+    );
+  }
+  out.push("");
+
+  if (real.length === 0 && synth.length === 0) {
+    out.push("No comparison remains after excluding pairs with an undeclared rater kind.");
+    out.push("");
+  } else if (real.length === 0) {
     out.push("=".repeat(72));
     out.push("SYNTHETIC DATA ONLY — these numbers measure nothing.");
     out.push("Every pair below was hand-written to exercise the aggregation.");
@@ -342,6 +499,11 @@ export function runCalibrate(o: CalibrateOptions): string {
         ? "Real human ratings exist, but none forms a same-evidence judge pair."
         : "No human has reviewed a real gonogo run yet.",
     );
+    if (undeclared.length > 0) {
+      out.push(
+        `${undeclared.length} further pair(s) carry an undeclared rater kind and are excluded.`,
+      );
+    }
     out.push("Do not quote these figures anywhere.");
     out.push("=".repeat(72));
     out.push("");
@@ -353,24 +515,22 @@ export function runCalibrate(o: CalibrateOptions): string {
   }
 
   const scored = real.length > 0 ? real : synth;
+  // Rater kind is part of the group key, so a human pair and an LLM pair over
+  // the same instrument can never land in one table.
   const pairKeys = [
-    ...new Set(
-      scored.map((p) =>
-        JSON.stringify([p.instrumentKey, `${p.a.raterId} vs ${p.b.raterId}`]),
-      ),
-    ),
+    ...new Set(scored.map((p) => JSON.stringify([p.instrumentKey, p.raterPairLabel]))),
   ].sort();
 
   for (const groupKey of pairKeys) {
     const [instrumentId, raterPair] = JSON.parse(groupKey) as [string, string];
     const group = scored.filter(
-      (p) =>
-        p.instrumentKey === instrumentId && `${p.a.raterId} vs ${p.b.raterId}` === raterPair,
+      (p) => p.instrumentKey === instrumentId && p.raterPairLabel === raterPair,
     );
     out.push(`instrument: ${group[0]!.instrumentLabel}`);
     out.push(
       `rater pair: ${raterPair}   (${group.length} run${group.length === 1 ? "" : "s"})`,
     );
+    out.push(`comparison: ${PAIR_CLASS_LABEL[group[0]!.pairClass]}`);
     out.push(
       pad("  dimension", 20) +
         padL("exact", 8) +
@@ -420,7 +580,20 @@ export function runCalibrate(o: CalibrateOptions): string {
       `  ${pad(p.runId, 30)}${p.synthetic ? "[synthetic] " : ""}` +
         (diffs.length ? diffs.join("; ") : "full agreement") +
         (abst.length ? `; abstentions: ${abst.join(", ")}` : "") +
+        `; raters: ${p.raterPairLabel}` +
         `; instrument: ${p.instrumentLabel}`,
+    );
+  }
+
+  if (undeclared.length > 0) {
+    out.push("");
+    out.push("pairs excluded because a rater kind was never declared");
+    for (const p of undeclared) {
+      out.push(`  ${pad(p.runId, 30)}${p.raterPairLabel}`);
+    }
+    out.push(
+      "  A rating written before rater_kind existed is not evidence that a human",
+      "  wrote it. Re-record it with an explicit rater_kind to make it countable.",
     );
   }
 
@@ -429,8 +602,9 @@ export function runCalibrate(o: CalibrateOptions): string {
   out.push("");
   out.push(
     `${scored.length} comparison(s)${
-      real.length === 0 ? ", all synthetic" : `, ${real.length} real`
-    }; ${unscored} run(s) have only one rating and were not compared.`,
+      scored.length === 0 ? "" : real.length === 0 ? ", all synthetic" : `, ${real.length} real`
+    }, ${humanPairs.length} of them judge-vs-human; ` +
+      `${unscored} run(s) have only one rating and were not compared.`,
   );
   out.push(
     `events schema v${EVENT_SCHEMA_VERSION}, gonogo ${GONOGO_VERSION}. ` +

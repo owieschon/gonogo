@@ -2,6 +2,7 @@
   "schema": "gonogo/human@1",
   "run_id": "synthetic-003-human-harsher",
   "reviewer": "synthetic",
+  "rater_kind": "synthetic",
   "recorded_at": "2026-08-31T12:10:00Z",
   "synthetic": true,
   "dimensions": {

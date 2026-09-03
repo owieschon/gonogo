@@ -8,10 +8,16 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { CITATION_REPAIR_DIMENSIONS, DIMENSIONS } from "./types.ts";
-import type { CitationRepair, CitationRepairDimension, Dimension } from "./types.ts";
+import {
+  CITATION_REPAIR_DIMENSIONS,
+  DIMENSIONS,
+  RATER_KINDS,
+  UNDECLARED_RATER_KIND,
+  isStoredRaterKind,
+} from "./types.ts";
+import type { CitationRepair, CitationRepairDimension, Dimension, StoredRaterKind } from "./types.ts";
 
-export const EVENT_SCHEMA_VERSION = 4;
+export const EVENT_SCHEMA_VERSION = 5;
 
 export type EventKind = "fixture" | "real" | "rater" | "outcome";
 
@@ -70,11 +76,16 @@ export interface JudgeEvent extends BaseEvent {
   replay: boolean;
 }
 
-/** A human (or, later, another judge) scoring the same run. */
+/** A person, a language model, or later another judge, scoring the same run. */
 export interface RaterEvent extends BaseEvent {
   kind: "rater";
   run_id: string;
   rater_id: string;
+  /**
+   * Who wrote these scores. Required on new events; v1-v4 events migrate to
+   * `undeclared`, which is excluded from agreement rather than read as human.
+   */
+  rater_kind: StoredRaterKind;
   scores: Record<string, number | "abstain">;
   spec_clarity?: number | "abstain";
   review_minutes?: number | null;
@@ -256,6 +267,26 @@ function validateCitationRepair(
   return repair as unknown as CitationRepair;
 }
 
+/**
+ * `synthetic` and `rater_kind: "synthetic"` are two spellings of one fact, so a
+ * record that spells them differently is asserting two incompatible things
+ * about its own author. An undeclared legacy record is exempt: it asserts
+ * nothing, which is the whole reason it is excluded from agreement.
+ */
+function assertRaterKindMatchesSynthetic(
+  raterKind: StoredRaterKind,
+  synthetic: boolean,
+  label: string,
+): void {
+  if (raterKind === UNDECLARED_RATER_KIND) return;
+  if (raterKind === "synthetic" && !synthetic) {
+    throw new Error(`${label}.rater_kind "synthetic" requires ${label}.synthetic true`);
+  }
+  if (raterKind !== "synthetic" && synthetic) {
+    throw new Error(`${label}.synthetic true requires ${label}.rater_kind "synthetic"`);
+  }
+}
+
 function outcomeForScores(scores: Record<string, unknown>): {
   abstained: boolean;
   verdict: string;
@@ -340,6 +371,12 @@ function validateCurrentEvent(value: unknown): GonogoEvent {
     if (event.synthetic !== undefined && typeof event.synthetic !== "boolean") {
       throw new Error("rater.synthetic must be a boolean");
     }
+    if (!isStoredRaterKind(event.rater_kind)) {
+      throw new Error(
+        `rater.rater_kind must be one of ${RATER_KINDS.join(", ")} or "${UNDECLARED_RATER_KIND}"`,
+      );
+    }
+    assertRaterKindMatchesSynthetic(event.rater_kind, event.synthetic === true, "rater");
     return event as unknown as RaterEvent;
   }
 
@@ -415,10 +452,11 @@ export function requireOutcomeRun(
 }
 
 /**
- * v1/v2/v3 → v4. Earlier versions had no model-independent subject hash;
+ * v1-v4 → v5. Earlier versions had no model-independent subject hash;
  * they migrate to null and must be reinspected before an applicability-aware
  * consumer acts. Other absent fields become their documented defaults; an
- * absent legacy score becomes an abstention, never an invented judgement.
+ * absent legacy score becomes an abstention, never an invented judgement, and
+ * an absent rater kind becomes "undeclared", never "human".
  */
 export function migrateEvent(raw: any): GonogoEvent {
   const version = Number(raw?.schema_version ?? 1);
@@ -450,12 +488,27 @@ export function migrateEvent(raw: any): GonogoEvent {
   if (e.kind === "rater") {
     e.review_minutes ??= null;
     e.notes ??= null;
+    // v1-v4 rater events predate rater_kind. The author of those scores was
+    // never recorded, so they migrate to "undeclared" and are excluded from
+    // agreement. Defaulting them to "human" would invent the one fact this
+    // field exists to establish. The single exception is a legacy record that
+    // already declared `synthetic: true`: that record states it scores no real
+    // run, so carrying the statement over classifies nobody as a reviewer.
+    if (version < 5) e.rater_kind = e.synthetic === true ? "synthetic" : UNDECLARED_RATER_KIND;
   }
   return validateCurrentEvent(e);
 }
 
 export function appendEvent(path: string, event: GonogoEvent): void {
   const validated = validateCurrentEvent(event);
+  // "undeclared" is a migration outcome, not something a writer may choose:
+  // whoever records a rating now knows whether a person or a model wrote it.
+  if (isRaterEvent(validated) && validated.rater_kind === UNDECLARED_RATER_KIND) {
+    throw new Error(
+      `a new rater event must declare rater_kind (${RATER_KINDS.join(", ")}); ` +
+        `"${UNDECLARED_RATER_KIND}" is reserved for migrated legacy records`,
+    );
+  }
   if (existsSync(path)) {
     const { events, malformed } = readEvents(path);
     if (malformed > 0) {

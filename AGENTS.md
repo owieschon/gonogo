@@ -46,7 +46,7 @@ neither, which is why CI uses it.
     replay/             recorded judge output, content-addressed
     events.jsonl        append-only event log; eval and calibrate read it
     audits/             self-judge verdicts on this repo's own changes
-    calibration/        human review records plus the synthetic demo data
+    calibration/        manual ratings, each declaring its rater kind, plus synthetic demo data
     runs/               gitignored output of `gonogo judge`; excluded from later evidence
 
 ## Invariants
@@ -67,7 +67,8 @@ invariants it affects** and **must pass `gonogo eval`**.
 - **I5 Minimum, abstention, no averaging** — overall is the minimum; thin
   evidence abstains; an abstention caps the verdict at `inconclusive`.
 - **I6 Calibration over belief** — judge-versus-human agreement is the only
-  trust currency. Never claim accuracy the calibration log does not show.
+  trust currency. Never claim accuracy the calibration log does not show, and
+  never let a rating count as human that did not declare `rater_kind: human`.
 - **I7 Provenance** — model version, prompt hashes, judge-call `evidence_hash`,
   model-independent `subject_hash`, and tool version on every new verdict and
   judge event. Legacy records migrate with `subject_hash: null`.
@@ -80,22 +81,34 @@ which comes before the code.
 
 `events.jsonl` at the repo root is append-only and is the substrate `eval` and
 `calibrate` read. One event per judge invocation, per rater, per recorded
-outcome. `schema_version` is 4; `src/events.ts` migrates v1-v3 on read.
+outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
   `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,
   latency, tokens and cost, and `rater_id: judge:<backend>`.
-- Rater events (`kind: rater`) are a human — or later another judge — scoring
-  the same `run_id`. Agreement is computed per rater pair, which is why panel
-  mode will be data and not code.
+- Rater events (`kind: rater`) are a person, a language model, or later another
+  judge scoring the same `run_id`. Each carries `rater_kind` — `human`, `llm`
+  or `synthetic` — declared by the writer and never inferred from `rater_id`.
+  Agreement is computed per rater pair, which is why panel mode will be data
+  and not code. A v1-v4 rater event migrates to `undeclared` and is excluded
+  from every figure, with one exception: a legacy event that already declared
+  `synthetic: true` migrates to `rater_kind: "synthetic"`, because that record
+  does state who wrote it. A new event may not be recorded as `undeclared`.
 - Outcome events (`kind: outcome`) record what happened to the work:
   `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`.
   A supplied run must resolve to a real judge event carrying the same task id.
   Recorded by hand.
 
 `calibrate` also discovers `human.json` recursively under a target repository's
-`runs/` and `calibration/`. A standalone rating is printed with its notes but
-never counted as agreement; only a same-run, same-evidence pair is calibration.
+`runs/` and `calibration/`. Those files carry `rater_kind` too. A standalone
+rating is printed with its notes, under a heading naming its rater kind, but is
+never counted as agreement; only a same-run, same-evidence pair is calibration,
+and only a `human` rating paired with a gonogo judge run is judge-versus-human
+calibration. A human rating paired with a standalone LLM review is reported as
+its own class and is not calibration. A pair holding any undeclared rating is
+excluded and listed with that reason, including when the other side is
+synthetic. The two committed reviews under `calibration/manual-pr-*` were
+written by language models and are pinned to `llm` by `src/rater-kind.test.ts`.
 
 Never rewrite history in the log. Never add a field without bumping
 `EVENT_SCHEMA_VERSION` and extending `migrateEvent`. The event log emits zero

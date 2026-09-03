@@ -2,6 +2,7 @@
   "schema": "gonogo/human@1",
   "run_id": "manual-pr-2",
   "reviewer": "claude-code-uhg22r",
+  "rater_kind": "llm",
   "recorded_at": "2026-09-01T09:42:32Z",
   "dimensions": {
     "task_satisfaction": "abstain",
