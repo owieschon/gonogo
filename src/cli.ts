@@ -19,11 +19,17 @@ import {
   readEvents,
   requireOutcomeRun,
 } from "./events.ts";
-import type { Disclosure, OutcomeEvent, OutcomeState } from "./events.ts";
+import type { Disclosure, EventKind, OutcomeEvent, OutcomeState } from "./events.ts";
+import {
+  PRIVATE_EVENTS,
+  TRACKED_FIXTURE_EVENTS,
+  canonicalPath,
+  isSamePath,
+  resolveEventDestination,
+} from "./event-destination.ts";
 import { GONOGO_VERSION } from "./version.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_EVENTS = join(ROOT, "events.jsonl");
 const DEFAULT_CACHE = join(ROOT, "replay");
 
 /**
@@ -61,7 +67,10 @@ Flags:
   --replay      serve raw judge output from the replay cache; no judge is invoked
   --out         where to write the run directory (default: <repo>/runs/<timestamp>)
   --max-diff-chars  elide the diff beyond this many characters (default 120000)
-  --events      append-only event log (default: <gonogo>/events.jsonl)
+  --events      append-only event log. Fixture sweeps default to the committed
+                <gonogo>/events.jsonl; judge and outcome record real work and
+                default to the gitignored <gonogo>/private/events.jsonl, which
+                they may never write to a public path inside the checkout.
   --run         stable run id used to join a verdict, human rating and outcome
   --k           runs per fixture for eval (default 3)
 
@@ -125,8 +134,22 @@ function maxDiffChars(args: Args): number | undefined {
   return n;
 }
 
-function eventsPath(args: Args): string {
-  return resolve(str(args, "events", DEFAULT_EVENTS)!);
+/**
+ * The one place a `--events` value becomes a path. It is normalized and checked
+ * once, here, and the string returned is the string every later read, existence
+ * check, directory creation and append uses — including `appendEvent`'s, which
+ * normalizes the same value to the same result.
+ *
+ * Checking here as well as in `appendEvent` is not redundancy for its own sake:
+ * it stops a run that would publish a subject event before it collects evidence
+ * or calls a judge, so the operator pays nothing for a write that cannot land.
+ */
+function eventsDestination(args: Args, fallback: string, kind: EventKind): string {
+  try {
+    return resolveEventDestination(str(args, "events", fallback)!, kind);
+  } catch (error) {
+    die(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function disclosureOf(args: Args): Disclosure {
@@ -162,7 +185,7 @@ async function cmdJudge(args: Args): Promise<number> {
   const stamp = timestamp();
   const runsRoot = join(repo, "runs");
   const outDir = resolve(str(args, "out", join(runsRoot, stamp))!);
-  const judgeEventsPath = eventsPath(args);
+  const judgeEventsPath = eventsDestination(args, PRIVATE_EVENTS, "real");
   const runId = str(args, "run", stamp)!;
   if (runId.trim() === "") die("--run must be a non-empty id");
   const existingLog = readEvents(judgeEventsPath);
@@ -176,7 +199,13 @@ async function cmdJudge(args: Args): Promise<number> {
   const excludedRoots = [runsRoot];
   if (inside(repo, outDir)) excludedRoots.push(outDir);
   if (inside(repo, DEFAULT_CACHE)) excludedRoots.push(DEFAULT_CACHE);
-  if (inside(repo, judgeEventsPath)) excludedRoots.push(judgeEventsPath);
+  // The events destination is canonical and `repo` is not, so containment is
+  // decided on canonical paths and the excluded root is then expressed under
+  // `repo`, which is the tree git is asked about.
+  const canonicalRepo = canonicalPath(repo);
+  if (inside(canonicalRepo, judgeEventsPath)) {
+    excludedRoots.push(join(repo, relative(canonicalRepo, judgeEventsPath)));
+  }
 
   log(`gonogo ${GONOGO_VERSION}  repo=${repo}  base=${base}  judge=${backendName}`);
   log("collecting evidence...");
@@ -264,7 +293,7 @@ async function cmdEval(args: Args): Promise<number> {
   const report = await runEval({
     fixturesDir: join(ROOT, "fixtures"),
     promptsDir: join(ROOT, "prompts"),
-    eventsPath: eventsPath(args),
+    eventsPath: eventsDestination(args, TRACKED_FIXTURE_EVENTS, "fixture"),
     cacheDir: DEFAULT_CACHE,
     backend: str(args, "judge", "claude")!,
     k,
@@ -295,12 +324,17 @@ async function cmdEval(args: Args): Promise<number> {
 function cmdCalibrate(args: Args): number {
   const explicit = args.dir;
   const repo = resolve(str(args, "repo", ".")!);
-  const calibrationEvents = resolve(str(args, "events", join(repo, "events.jsonl"))!);
+  const calibrationEvents = canonicalPath(str(args, "events", join(repo, "events.jsonl"))!);
   const dirs = explicit
     ? (Array.isArray(explicit) ? explicit : [String(explicit)]).map((d) => resolve(d))
     : [join(repo, "runs"), join(repo, "calibration"), join(ROOT, "calibration", "synthetic")];
   console.log("");
   console.log(runCalibrate({ eventsPath: calibrationEvents, dirs }));
+  // Real judge runs now land in the private log by default, so a calibrate that
+  // reads only the tracked log would report an honest but incomplete zero.
+  if (existsSync(PRIVATE_EVENTS) && !isSamePath(PRIVATE_EVENTS, calibrationEvents)) {
+    console.log(`A private event log exists. To include it: gonogo calibrate --events ${PRIVATE_EVENTS}`);
+  }
   console.log("");
   return EXIT.go;
 }
@@ -321,7 +355,7 @@ function cmdOutcome(args: Args): number {
   if (mergedAt !== null && !isIso8601Timestamp(mergedAt)) {
     die("--merged-at must be an ISO-8601 timestamp");
   }
-  const path = eventsPath(args);
+  const path = eventsDestination(args, PRIVATE_EVENTS, "outcome");
   if (runId !== null) {
     const { events, malformed } = readEvents(path);
     if (malformed > 0) die(`${path} contains ${malformed} malformed event line(s); repair the log before joining an outcome`);

@@ -83,6 +83,51 @@ which comes before the code.
 `calibrate` read. One event per judge invocation, per rater, per recorded
 outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 
+That file is committed and public, so it takes fixture events only. A `real`,
+`rater` or `outcome` event describes somebody's actual work and defaults
+instead to `private/events.jsonl`, which is gitignored. `appendEvent` refuses
+to write those kinds to any path inside this checkout outside `private/`.
+`src/event-destination.ts` is that boundary and `src/event-privacy.test.ts` is
+its test.
+
+The destination is normalized once, in `resolveEventDestination`, and that one
+string is what the policy decides on and what every existence check, read,
+`mkdir` and append then uses. Normalization walks the path one component at a
+time and runs `realpath` on each prefix, so `..` is applied after symlinks are
+followed rather than before — `path.resolve` collapses `..` first, which let
+`<somewhere>/link/../events.jsonl`, with `link` pointing into this checkout,
+read as a path outside the checkout while `open(2)` landed on the tracked log.
+A differently cased name, a symlink to the log, a symlink to the checkout, and
+a hard link (which has no link to resolve and is caught by device and inode
+instead) all resolve to the file they would really write.
+
+A symlink whose target does not exist yet is resolved the same way. `realpath`
+fails on one, so it used to keep its own spelling — a link outside the checkout
+pointing at a path inside it read as outside, while `appendFileSync` followed
+the link and created its target in the public checkout. Such a component is now
+expanded by reading the link and continuing the walk at the target, so a
+dangling link normalizes to the file it will create. A link chain that never
+resolves is refused rather than falling back to a spelling that names no file.
+
+Three things the boundary does not close, and does not claim to:
+
+- **Final-component TOCTOU.** The decision reflects the filesystem at the
+  moment of the check. Anything that can write to a directory on the path can
+  swap a component between the check and the append.
+- **Alternate mount aliases.** A file reachable through two mount points is two
+  canonical paths. The device-and-inode comparison covers the tracked log
+  itself; it does not cover the rest of the checkout.
+- **Case-insensitive filesystems on Linux.** Case folding is applied on darwin
+  and win32 by platform, not by asking the filesystem, so a case-insensitive
+  mount on Linux is compared case-sensitively.
+
+The log is never rewritten, so ten subject-kind lines predating this boundary
+stay where they are. They are not one thing: five `real` events are this
+repository's own self-judge runs (sessions 001-004 and session-007, verdicts
+under `audits/`), four `rater` events are the synthetic calibration fixtures —
+`rater_id` `synthetic`, `synthetic: true`, no person and no real run behind
+them — and one `outcome` event records that PR #1 merged.
+
 - Judge events (`kind: fixture | real`) carry scores, verdict, `drift_type`,
   `attempted_gaming`, `disclosure`, subject, prompt and evidence hashes,
   latency, tokens and cost, and `rater_id: judge:<backend>`.
@@ -95,11 +140,14 @@ outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
   `synthetic: true` migrates to `rater_kind: "synthetic"`, because that record
   does state who wrote it. A new event may not be recorded as `undeclared`.
 - Outcome events (`kind: outcome`) record what happened to the work:
-  `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`.
+  `gonogo outcome --task <id> --run <judge-run> --pr <url> --state merged`,
+  which records to the private log unless `--events` names another safe path.
   A supplied run must resolve to a real judge event carrying the same task id.
   Recorded by hand.
 
-`calibrate` also discovers `human.json` recursively under a target repository's
+`calibrate` reads whichever log `--events` names and defaults to the target
+repository's `events.jsonl`; point it at `private/events.jsonl` to include real
+runs. It also discovers `human.json` recursively under a target repository's
 `runs/` and `calibration/`. Those files carry `rater_kind` too. A standalone
 rating is printed with its notes, under a heading naming its rater kind, but is
 never counted as agreement; only a same-run, same-evidence pair is calibration,

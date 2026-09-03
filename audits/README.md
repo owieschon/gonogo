@@ -244,3 +244,140 @@ The correction changes no prompt, dimension, threshold, model, fixture or
 receipt, so the replay gate is the applicable instrument check. The self-judge
 verdict is `hold`; whoever merges is accepting a `hold` with its stated reason,
 not a `go`.
+
+## session-008 — self-judge not run
+
+The real-event-privacy branch, stacked on `hardening/calibration-provenance`.
+Recorded as session-007 on this branch before it was rebased; renumbered when
+the corrected base took that number, with the record otherwise unchanged.
+
+**No self-judge verdict exists for this change**, for the same reason as
+session-006: `scripts/self-judge.sh` invokes a live judge and this session was
+instructed not to incur paid usage. The absence is recorded rather than filled
+with a replayed verdict of different code.
+
+What did run, on the branch head: `bunx tsc --noEmit` clean; `bun test` 166
+pass, 0 fail, 615 assertions, of which 32 are the new destination-boundary
+tests; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay --k 3`
+21/21 verdicts, zero hard failures, every published floor cleared, gate PASS,
+identical to the recorded baseline; the tracked event log reads 679 events with
+0 malformed lines at schema v5, and the 21 lines this branch appends are all
+`kind: fixture`; every committed fixture, label, threshold and manual-rating
+JSON file parses; and a scan of the diff found no credential, key, address, or
+employer or client reference.
+
+The branch changes no prompt, dimension, threshold, model or retained receipt,
+so the replay gate is the applicable instrument check. It does change where a
+live `judge` run records its event, which is the one behaviour a live
+self-judge would also exercise: whoever runs it should confirm the event lands
+in `private/events.jsonl` and not in the tracked log.
+
+## session-009 — self-judge attempted twice, no verdict
+
+The review correction on the real-event-privacy branch, specified in
+`SPEC-REAL-EVENT-PRIVACY-CORRECTION.md`. Two invocations were made and neither
+returned a verdict. Both are recorded. No verdict was discarded, because none
+was produced.
+
+### Attempt 1 — blocked on authentication
+
+    GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-REAL-EVENT-PRIVACY-CORRECTION.md --base a586c24 \
+      --out runs/session-009-correction
+
+Evidence collection succeeded — 10 changed files, 149,746 characters of diff,
+no truncation — and the test command (`bunx tsc --noEmit` plus the k=3 replay
+sweep into the run directory) exited 0. The blind pass completed. The rubric
+pass terminated with `claude exited 1: Not logged in · Please run /login`,
+while `claude auth status` reported a logged-in `claude.ai` Max subscription,
+`apiProvider: firstParty`, both before and after. This is the fault session-007
+diagnosed on the sibling branch: `claude --bare` skips keychain reads, and this
+machine's subscription credential exists only in the macOS keychain.
+
+### Attempt 2 — the rubric pass timed out
+
+    PATH=<shim>:$PATH GONOGO_CLAUDE_MODEL=claude-sonnet-5 scripts/self-judge.sh \
+      --spec SPEC-REAL-EVENT-PRIVACY-CORRECTION.md --base e272d1b \
+      --out runs/session-009-verdict
+
+Run after applying session-007's environment fix — a `claude` shim first on
+`PATH` that drops `--bare` and forwards every other argument unchanged. Nothing
+in the repository was changed to obtain it. Evidence collection succeeded — 10
+changed files, 152,702 characters of diff, no truncation — the test command
+exited 0, and the blind pass completed. The rubric pass reached the judge this
+time and then hit `claude timed out after 600000ms`, the ten-minute per-call
+limit hardcoded in `src/judges/claude.ts`.
+
+**No verdict exists for this change.** A third invocation was not made. Raising
+the timeout would change the instrument on a branch whose spec forbids it, and
+sampling again after two failed transports is the behaviour rule 6 exists to
+forbid. No judge event was written by either attempt — both aborted before
+`appendEvent` — and `private/events.jsonl` does not exist. The tracked log was
+not touched by either attempt. The tool records cost only on a completed run,
+so the cost of the two blind passes that did complete is unrecorded.
+
+### Deterministic gates
+
+Run on the branch head: `bunx tsc --noEmit` clean; `bun test` 189 pass, 0 fail,
+695 assertions, of which 47 are the destination-boundary tests and 16 are new
+in this correction; `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval
+--replay --k 3` 21/21 verdicts, zero hard failures, every published floor
+cleared, gate PASS, identical to every earlier round; the tracked event log
+reads 743 events with 0 malformed lines, all migrating to schema v5, and every
+line this branch appends is `kind: fixture`; all committed JSON parses;
+`gonogo calibrate` still reports 0 judge-versus-human pairs; and a scan of the
+diff found no credential, key, address, or employer or client reference.
+
+The reported defect was reproduced against `07ec4e5a` before it was corrected:
+a symlink into the checkout followed by `..` was approved as a path outside the
+checkout and appended a `real` subject event to the committed `events.jsonl`.
+The regression tests for it fail against `07ec4e5a` and pass against the
+correction. The correction changes no prompt, dimension, threshold, model,
+fixture or retained receipt, so the replay gate is the applicable instrument
+check. Whoever merges is accepting this change without a self-judge verdict,
+and should run one; a live run should confirm its own event lands in
+`private/events.jsonl` and not in the tracked log.
+
+## merge of the hardening stack — accepted without a self-judge verdict
+
+`hardening/calibration-provenance` (PR #4) and `hardening/real-event-privacy`
+(PR #5) were merged into `main` on 2026-09-03, each with a merge commit, by a
+session acting on Owen's explicit authorization to merge his own pull requests.
+
+PR #4 was merged accepting session-007's verdict as it stands: `hold`, overall
+2/4, on `claim_verification`. Not a `go`.
+
+**PR #5 is merged with no self-judge verdict**, which session-008 and
+session-009 above both record as the state of this branch. Session-009's two
+invocations failed in transport — one on authentication, one on the judge's
+ten-minute per-call timeout — and neither produced a verdict. This session did
+not make a third invocation and did not rerun any model verdict: sampling again
+after two failed transports is what rule 6 exists to forbid, and no cached or
+replayed verdict of different code was substituted. Rule 6's live self-judge is
+therefore outstanding on this change, and this record is the acceptance
+`audits/README.md` requires in its place.
+
+### What was verified before merging
+
+Run at `d1f2b5d`, the merged head of PR #5, after `bun install
+--frozen-lockfile`:
+
+- `bunx tsc --noEmit` — clean, exit 0.
+- `bun test` — 196 pass, 0 fail, 721 assertions, 10 files. Higher than
+  session-009's 189/695 because `936ad75` added the dangling-symlink
+  regression tests after that record was written.
+- `GONOGO_CLAUDE_MODEL=claude-sonnet-5 ./bin/gonogo eval --replay --k 3` —
+  21/21 verdicts, 0 hard failures, every published floor cleared, quality gate
+  PASS, exit 0. Identical to the recorded baseline.
+- The tracked `events.jsonl` reads 806 events with 0 malformed lines; subject
+  kinds are 796 `fixture`, 5 `real`, 4 `rater`, 1 `outcome`, all pre-existing.
+- All 319 committed `.json` files parse.
+- GitHub CI `check` passed on both heads before either merge.
+
+The replay eval appends fixture events as it runs. The 42 lines this session's
+two verification runs appended were discarded and `events.jsonl` was restored
+to the branch head, so no receipt in this repository was written, altered, or
+removed by the verification. The live self-judge behaviour session-008 asked a
+merger to confirm — that a live `judge` event lands in `private/events.jsonl`
+and not in the tracked log — is still unconfirmed, because no live judge was
+run.
