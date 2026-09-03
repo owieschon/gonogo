@@ -1,4 +1,5 @@
 runs/
+private/
 node_modules/
 *.log
 .DS_Store
