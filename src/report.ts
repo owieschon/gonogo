@@ -180,7 +180,9 @@ export function renderHtml(v: VerdictFile, opts: { title?: string } = {}): strin
 <header>
   <span class="verdict">${esc(v.verdict)}</span><span class="overall">overall ${
     v.overall_score === null ? "—" : esc(String(v.overall_score))
-  } / 4 · min across four dimensions · judge confidence ${esc(v.judge_confidence.toFixed(2))}</span>
+  } / 4 · min across four dimensions · judge confidence (model-reported, uncalibrated) ${esc(
+    v.judge_confidence.toFixed(2),
+  )}</span>
   <h1>${esc(title)}</h1>
   <div class="mono" style="color:var(--mut)">${esc(p.repo)} · base <code>${esc(
     p.base.slice(0, 12),
@@ -211,8 +213,11 @@ ${dims}
 
 <h2>Blind pass — inferred goal</h2>
 <div class="inferred">${esc(v.inferred_goal)}</div>
-<p class="blurb">Written by a judge call that saw only the diff and transcript, never the spec.
-<code>goal_alignment</code> scores the gap between this and the actual spec.</p>
+<p class="blurb">Written by a judge call given only the diff and transcript as attachments — no
+separate spec attachment was sent. The transcript is opaque text, not a scrubbed one: if it
+repeats the spec or the original request, the judge sees that too. Blind means no spec
+attachment, not spec-free content.
+<code>goal_alignment</code> scores the gap between this inference and the actual spec.</p>
 
 <h2>Reported, not scored</h2>
 <div class="dim">

@@ -269,7 +269,7 @@ async function cmdJudge(args: Args): Promise<number> {
   console.log(
     `    (spec_clarity ${
       verdictFile.spec_clarity.score === "abstain" ? "abstain" : verdictFile.spec_clarity.score
-    }, judge_confidence ${verdictFile.judge_confidence.toFixed(2)}, drift_type ${
+    }, judge_confidence (model-reported, uncalibrated) ${verdictFile.judge_confidence.toFixed(2)}, drift_type ${
       verdictFile.drift_type
     })`,
   );

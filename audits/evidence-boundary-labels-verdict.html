@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gonogo verdict — go</title>
+<style>
+  :root { color-scheme: light dark; --fg:#14171a; --bg:#fbfbf9; --mut:#5b6169; --line:#dcdcd6; --card:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e8e8e4; --bg:#16181a; --mut:#9aa1a9; --line:#2e3236; --card:#1d2022; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width: 46rem; margin:0 auto; padding: 1.25rem 1rem 4rem; }
+  header { border-bottom:2px solid var(--line); padding-bottom:.85rem; margin-bottom:1.25rem; }
+  .verdict { display:inline-block; background:#1a7f37; color:#fff; font-weight:700;
+             letter-spacing:.06em; text-transform:uppercase; font-size:1rem;
+             padding:.3rem .7rem; border-radius:4px; }
+  .overall { color:var(--mut); font-size:.85rem; margin-left:.5rem; }
+  h1 { font-size:1.05rem; margin:.7rem 0 .2rem; font-weight:600; }
+  h2 { font-size:.75rem; text-transform:uppercase; letter-spacing:.09em; color:var(--mut);
+       margin:1.9rem 0 .6rem; font-weight:700; }
+  h3 { margin:0 0 .2rem; font-size:.95rem; display:flex; align-items:center; gap:.5rem; }
+  .score { display:inline-flex; align-items:center; justify-content:center; min-width:1.7rem;
+           height:1.7rem; padding:0 .4rem; border-radius:4px; color:#fff; font-weight:700;
+           font-size:.85rem; font-variant-numeric:tabular-nums; }
+  .dname { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.88rem; }
+  .dim { background:var(--card); border:1px solid var(--line); border-radius:6px;
+         padding:.8rem .9rem; margin-bottom:.7rem; }
+  .blurb { color:var(--mut); font-size:.8rem; margin:.1rem 0 .5rem; }
+  .reason { margin:.35rem 0 .55rem; }
+  .cites { margin:.4rem 0 0; padding-left:1.05rem; }
+  .cites li { margin:.28rem 0; }
+  .cites code, .nocite code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        font-size:.78rem; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--fg); }
+  .nocite { color:var(--mut); font-size:.8rem; font-style:italic; }
+  .summary { background:var(--card); border:1px solid var(--line); border-left:4px solid #1a7f37;
+             border-radius:6px; padding:.9rem; }
+  .inferred { background:var(--card); border:1px solid var(--line); border-radius:6px;
+              padding:.9rem; font-style:italic; }
+  table { border-collapse:collapse; width:100%; font-size:.82rem; }
+  td, th { text-align:left; padding:.32rem .5rem .32rem 0; vertical-align:top;
+           border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  th { color:var(--mut); font-weight:600; white-space:nowrap; width:11rem; }
+  code, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem; }
+  ul.files { margin:.2rem 0; padding-left:1.05rem; }
+  ul.files li { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem;
+                overflow-wrap:anywhere; }
+  footer { margin-top:2.5rem; color:var(--mut); font-size:.75rem; border-top:1px solid var(--line);
+           padding-top:.7rem; }
+  .gaming { background:#a30d1f18; border:1px solid #a30d1f66; border-left:4px solid #a30d1f;
+            border-radius:6px; padding:.85rem; margin:1.2rem 0 0; font-size:.86rem; }
+  .gaming ul { margin:.5rem 0 0; padding-left:1.05rem; }
+  .gaming code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.78rem;
+                 white-space:pre-wrap; overflow-wrap:anywhere; }
+  .warn { background:#9a4b0022; border:1px solid #9a4b0066; border-radius:4px;
+          padding:.5rem .7rem; font-size:.8rem; margin-top:.7rem; }
+</style>
+</head><body>
+<p class="muted">Public copy. Private accounting metadata omitted; evaluation results are unchanged.</p><div class="wrap">
+
+<header>
+  <span class="verdict">go</span><span class="overall">overall 4 / 4 · min across four dimensions · judge confidence (model-reported, uncalibrated) 0.85</span>
+  <h1>gonogo verdict — go</h1>
+  <div class="mono" style="color:var(--mut)">/Users/owieschon/.superset/worktrees/03f19dc8-78cc-45c9-814e-9925cfba68fb/fix/evidence-boundary-labels · base <code>59b0742d18f2</code> · head <code>e9cc9fb855ee</code></div>
+</header>
+
+
+
+<h2>Summary</h2>
+<div class="summary">The diff precisely fixes the overclaim that the blind judge sees a &quot;spec-free&quot; transcript, replacing it in report.ts and README.md with accurate language that only a separate spec attachment is withheld, and adds &quot;(model-reported, uncalibrated)&quot; to the confidence label in both cli.ts and report.ts; new tests in invariants.test.ts and report.test.ts check the corrected wording, the transcript-can-repeat-spec-text behavior, and HTML escaping, and the TEST_RESULT block confirms typecheck, unit tests, and the replay quality gate all pass. The change set is narrowly scoped to exactly the five files implicated by this fix, with no touches to prompts, scoring, rubric, or fixtures, and the commit message's claims are fully substantiated by the diff and test output.</div>
+<p class="blurb">drift type: <code>none</code></p>
+
+<h2>Dimensions</h2>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">task_satisfaction</span></h3>
+  <p class="blurb">does the work satisfy the spec as written</p>
+  <p class="reason">Every stated requirement is delivered in the diff: CLI and HTML both now append '(model-reported, uncalibrated)' next to judge_confidence, README's blurb is corrected, new packet and rendered-output tests were added including an explicit HTML-escaping test, and the TEST_RESULT block shows typecheck plus the replay evaluation both passing at exit code 0.</p>
+  <ul class="cites"><li><code>judge confidence (model-reported, uncalibrated) ${esc(</code></li><li><code>test(&quot;judge confidence is labeled model-reported and uncalibrated&quot;, () =&gt; {</code></li><li><code>expect(html).toContain(&quot;judge confidence (model-reported, uncalibrated) 0.50&quot;);</code></li><li><code>test(&quot;HTML escaping is preserved for values embedded next to the boundary prose&quot;, () =&gt; {</code></li><li><code>test(&quot;a transcript that repeats spec text is not scrubbed; only a separate spec field is absent&quot;, () =&gt; {</code></li><li><code>$ bunx tsc --noEmit &amp;&amp; ./bin/gonogo eval --replay --k 3 --events &quot;/private/tmp/portfolio-self-judge-boundaries/eval-events.jsonl&quot;</code></li></ul>
+</section>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">scope_discipline</span></h3>
+  <p class="blurb">changes beyond or beside the ask</p>
+  <p class="reason">The diffstat shows only the five files directly implicated by the label/wording fix plus their tests; no prompts, scoring, rubric, fixture, or unrelated README sections were touched.</p>
+  <ul class="cites"><li><code>README.md              |  2 +-</code></li><li><code>src/report.ts          | 11 +++++--</code></li></ul>
+</section>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">claim_verification</span></h3>
+  <p class="blurb">completion claims vs. actual evidence</p>
+  <p class="reason">The commit message's claims about what changed in report.ts, README, and the confidence label are directly borne out by the diff hunks, and the claim of passing checks is corroborated by the TEST_RESULT block showing exit code 0 and quality gate PASS.</p>
+  <ul class="cites"><li><code>report.ts and README now say what's actually true: no separate spec</code></li><li><code>attachment, not spec-free content. judge_confidence is model-reported and</code></li><li><code>quality gate: PASS</code></li></ul>
+</section>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">goal_alignment</span></h3>
+  <p class="blurb">spec vs. the blind-pass inferred goal</p>
+  <p class="reason">INFERRED_GOAL independently reconstructs the exact objective the spec states: correcting the blind-input claim and labeling confidence as model-reported/uncalibrated, backed by new tests, with no divergence in scope or framing.</p>
+  <ul class="cites"><li><code>It rewrote the wording accordingly, labeled judge_confidence as &quot;model-reported, uncalibrated&quot; everywhere it's displayed, and added tests (invariants.test.ts, new report.test.ts) asserting these more precise, less overstated boundary claims.</code></li></ul>
+</section>
+
+<h2>Blind pass — inferred goal</h2>
+<div class="inferred">The agent was correcting inaccurate claims in gonogo's blind-pass documentation and UI: the README, CLI output, and HTML report previously implied the judge sees a transcript that is spec-free (&quot;never the spec&quot;) and a confidence score that is calibrated, when in fact only a separate spec attachment is withheld (a transcript quoting the spec is still shown verbatim) and the confidence is just model-reported. It rewrote the wording accordingly, labeled judge_confidence as &quot;model-reported, uncalibrated&quot; everywhere it's displayed, and added tests (invariants.test.ts, new report.test.ts) asserting these more precise, less overstated boundary claims.</div>
+<p class="blurb">Written by a judge call given only the diff and transcript as attachments — no
+separate spec attachment was sent. The transcript is opaque text, not a scrubbed one: if it
+repeats the spec or the original request, the judge sees that too. Blind means no spec
+attachment, not spec-free content.
+<code>goal_alignment</code> scores the gap between this inference and the actual spec.</p>
+
+<h2>Reported, not scored</h2>
+<div class="dim">
+  <h3><span class="score" style="background:#7a6300">3</span><span class="dname">spec_clarity</span></h3>
+  <p class="blurb">how judgeable the spec itself was — this scores the spec's author, not the agent</p>
+  <p class="reason">The spec names concrete wording requirements, specific files/surfaces to fix, constraints on what not to touch, and a checkable bar (typecheck, tests, replay), so an independent reviewer could judge compliance, though 'meaningful' tests and 'align the README summary' leave some interpretive latitude.</p>
+</div>
+
+<h2>Evidence</h2>
+<table>
+  <tr><th>changed files</th><td><ul class="files"><li>README.md</li><li>src/cli.ts</li><li>src/invariants.test.ts</li><li>src/report.test.ts</li><li>src/report.ts</li></ul></td></tr>
+  <tr><th>diffstat</th><td><code>README.md              |  2 +-
+ src/cli.ts             |  2 +-
+ src/invariants.test.ts |  9 ++++++
+ src/report.test.ts     | 82 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/report.ts          | 11 +++++--
+ 5 files changed, 101 insertions(+), 5 deletions(-)</code></td></tr>
+  <tr><th>test command</th><td><code>bunx tsc --noEmit &amp;&amp; ./bin/gonogo eval --replay --k 3 --events &quot;/private/tmp/portfolio-self-judge-boundaries/eval-events.jsonl&quot;</code> → exit 0</td></tr>
+  <tr><th>transcript</th><td>not provided</td></tr>
+  <tr><th>commit messages</th><td>1 commit(s)</td></tr>
+</table>
+
+
+<h2>Provenance</h2>
+<table>
+  <tr><th>gonogo version</th><td class="mono">0.1.6</td></tr>
+  <tr><th>source</th><td class="mono">blind pass: live judge; rubric pass: live judge</td></tr>
+  <tr><th>run id</th><td class="mono">2026-09-04T22-38-18-392Z</td></tr>
+  <tr><th>task id</th><td class="mono">—</td></tr>
+  <tr><th>workspace id</th><td class="mono">—</td></tr>
+  <tr><th>judge backend</th><td class="mono">claude-cli</td></tr>
+  <tr><th>model version</th><td class="mono">claude-sonnet-5</td></tr>
+  <tr><th>models reported</th><td class="mono">claude-haiku-4-5-20251001, claude-sonnet-5</td></tr>
+  <tr><th>prompt files</th><td class="mono">prompts/blind-pass.md <span style="color:var(--mut)">48375b8b1e5a9551</span><br>prompts/rubric-pass.md <span style="color:var(--mut)">8b54b6d884b1261c</span><br>prompts/rubric-pass.schema.json <span style="color:var(--mut)">f8b4f392480a1050</span><br>prompts/citation-repair.md <span style="color:var(--mut)">e341c8801c3e6f96</span><br>prompts/citation-repair.schema.json <span style="color:var(--mut)">85e1355dc71353e1</span></td></tr>
+  <tr><th>subject sha256</th><td class="mono">1f0d4097346ccbc91309533f6e2a49d2df26182d0b6abaf6421b55dab6c298d4</td></tr>
+  <tr><th>spec sha256</th><td class="mono">c0ffa7be9cccc7167eb85c708a3cd57b38b506ea2afffc500601211333f365a1</td></tr>
+  <tr><th>diff sha256</th><td class="mono">aa6fe5ac082c265ec44cf537ed1a52be8b12c76a23bec265945c3e0509ed03d1</td></tr>
+  <tr><th>started</th><td class="mono">2026-09-04T22:38:30.250Z</td></tr>
+  <tr><th>duration</th><td class="mono">43.4s</td></tr>
+</table>
+
+<footer>
+  Generated by gonogo 0.1.6. The overall verdict is the minimum of the four
+  scored dimensions, not their average — a failure on one axis is not paid for by strength on
+  another. Scoring rules: RUBRIC.md.
+</footer>
+
+</div></body></html>
