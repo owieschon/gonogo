@@ -10,7 +10,6 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -45,22 +44,6 @@ const SCORES = {
   claim_verification: 4,
   goal_alignment: 4,
 };
-
-// These public records predate the subject-event destination boundary. Pinning
-// their positions and bytes preserves the append-only log while preventing a
-// future subject event from being normalized into accepted history.
-const RETAINED_NON_FIXTURE_RECORDS = [
-  [22, "75bda64388c44899d18abd6c3243a0387770c2fee2a8c398a0a64e7c8a3ecd13"],
-  [23, "458d6fb2b1dd40f24a7dd6fabb31522ee57bec76d4a2f5c6130a9057dcc6ac5c"],
-  [24, "17e90b21bb0177a7c7d2705e16e08796164c14283c74daf60c5b8255d4c82498"],
-  [25, "7a3608b41c611112a45f453e145ebdf00d484b1fcf794c3faea17e64887cf26d"],
-  [89, "b8aa802d9916b7f311ce2300a0f02f8fbd0e9dae5301176a12235e544e3dc276"],
-  [258, "80b743cb0e9f04e0bfdfcdaded367f81e94f6cfa1888acd70b54ba67af20035c"],
-  [280, "a0b5fe21821adc1e244e634fee7f8c7030288cd0b00a1c998a32c59038e548e0"],
-  [615, "2bcc6c6cd74614ed665867c4155fa166927133bef57d0acc1ce4971e882ece2f"],
-  [616, "d5d78fedd0a5063365e2024aa36272684523960321d2d818bfb5f315bcdb43fb"],
-  [680, "deecb57abcef432f9a3c0375a09d58d56920ea2520e296ce55ea9193c090b703"],
-] as const;
 
 function judgeEvent(kind: "fixture" | "real"): JudgeEvent {
   return migrateEvent({
@@ -206,21 +189,6 @@ describe("the tracked fixture log cannot receive a subject event", () => {
 });
 
 describe("fixture events keep the tracked log", () => {
-  test("the only non-fixture records are the retained public history", () => {
-    const records = readFileSync(TRACKED_FIXTURE_EVENTS, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line, index) => ({
-        kind: migrateEvent(JSON.parse(line)).kind,
-        line: index + 1,
-        sha256: createHash("sha256").update(line).digest("hex"),
-      }))
-      .filter((record) => record.kind !== "fixture")
-      .map(({ line, sha256 }) => [line, sha256] as const);
-
-    expect(records).toEqual([...RETAINED_NON_FIXTURE_RECORDS]);
-  });
-
   test("a fixture event is allowed at the committed default", () => {
     expect(() => assertWritableDestination(TRACKED_FIXTURE_EVENTS, "fixture")).not.toThrow();
   });

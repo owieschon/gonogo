@@ -3,11 +3,11 @@
  *
  * `events.jsonl` at the root of the gonogo checkout is committed. It is the
  * fixture-sweep destination, and `eval` reads it back as its substrate. Its
- * append-only history retains ten public non-fixture records written before
- * this boundary existed; their exact fingerprints are pinned by the privacy
- * tests. A new `real`, `rater` or `outcome` event describes somebody's actual
- * work — the spec they were given, the repository they changed, the verdict on
- * it — and appending one to a tracked file publishes it at the next `git add`.
+ * append-only history also retains public non-fixture records written before
+ * this boundary existed. A new `real`, `rater` or `outcome` event describes
+ * somebody's actual work — the spec they were given, the repository they
+ * changed, the verdict on it — and appending one to a tracked file publishes
+ * it at the next `git add`.
  *
  * So the boundary is a location, not a guess about content: subject events may
  * not be written anywhere inside the gonogo checkout except the gitignored

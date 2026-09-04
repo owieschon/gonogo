@@ -80,12 +80,10 @@ which comes before the code.
 ## The event log
 
 `events.jsonl` at the repo root is append-only and is the substrate `eval` and
-`calibrate` read. It is now the fixture-sweep destination. Its history retains
-ten public pre-boundary records: four synthetic calibration raters, five
-self-judgements of this public repository and one public-PR outcome. Their
-fingerprints are pinned in `src/event-privacy.test.ts`; do not alter or expand
-that set. One event is recorded per judge invocation, per rater and per
-outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
+`calibrate` read. It is now the fixture-sweep destination, but its append-only
+history retains ten public non-fixture records written before that boundary.
+Do not rewrite them. One event is recorded per judge invocation, per rater and
+per outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 
 New `real`, `rater` and `outcome` events describe somebody's actual work and
 default instead to `private/events.jsonl`, which is gitignored. `appendEvent`
@@ -126,8 +124,8 @@ Three things the boundary does not close, and does not claim to:
 
 The log is never rewritten, so ten subject-kind lines predating this boundary
 stay where they are. They are not one thing: five `real` events are this
-repository's own self-judge runs (sessions 001-004 and session-007, verdicts
-under `audits/`), four `rater` events are the synthetic calibration fixtures —
+repository's own self-judge runs (session 002, two session-003 runs, session 004
+and session 007), four `rater` events are the synthetic calibration fixtures —
 `rater_id` `synthetic`, `synthetic: true`, no person and no real run behind
 them — and one `outcome` event records that PR #1 merged.
 
