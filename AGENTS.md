@@ -80,15 +80,18 @@ which comes before the code.
 ## The event log
 
 `events.jsonl` at the repo root is append-only and is the substrate `eval` and
-`calibrate` read. One event per judge invocation, per rater, per recorded
+`calibrate` read. It is now the fixture-sweep destination. Its history retains
+ten public pre-boundary records: four synthetic calibration raters, five
+self-judgements of this public repository and one public-PR outcome. Their
+fingerprints are pinned in `src/event-privacy.test.ts`; do not alter or expand
+that set. One event is recorded per judge invocation, per rater and per
 outcome. `schema_version` is 5; `src/events.ts` migrates v1-v4 on read.
 
-That file is committed and public, so it takes fixture events only. A `real`,
-`rater` or `outcome` event describes somebody's actual work and defaults
-instead to `private/events.jsonl`, which is gitignored. `appendEvent` refuses
-to write those kinds to any path inside this checkout outside `private/`.
-`src/event-destination.ts` is that boundary and `src/event-privacy.test.ts` is
-its test.
+New `real`, `rater` and `outcome` events describe somebody's actual work and
+default instead to `private/events.jsonl`, which is gitignored. `appendEvent`
+refuses to write those kinds to any path inside this checkout outside
+`private/`. `src/event-destination.ts` is that boundary and
+`src/event-privacy.test.ts` is its test.
 
 The destination is normalized once, in `resolveEventDestination`, and that one
 string is what the policy decides on and what every existence check, read,
