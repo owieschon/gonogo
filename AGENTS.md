@@ -25,8 +25,9 @@ tool, not its operator.
     ./bin/gonogo calibrate --repo <p> # judge-vs-human agreement for target repo
     ./scripts/self-judge.sh --spec SPEC.md             # judge this repo's own diff
 
-`bun` and the `claude` CLI must both be on PATH for a live run. `--replay` needs
-neither, which is why CI uses it.
+`bun` is required for every run; the `claude` CLI is required only for a live
+one. `--replay` needs neither the `claude` CLI nor judge credentials, which is
+why CI uses it.
 
 ## Layout
 
