@@ -381,3 +381,11 @@ removed by the verification. The live self-judge behaviour session-008 asked a
 merger to confirm — that a live `judge` event lands in `private/events.jsonl`
 and not in the tracked log — is still unconfirmed, because no live judge was
 run.
+
+## Evidence-boundary labels — 2026-09-04
+
+Commit `e9cc9fb855eebd8d6e7ed416eb27049cfdc96655` was judged against `59b0742` with the [task specification](evidence-boundary-labels-spec.md). The public [verdict](evidence-boundary-labels-verdict.json) is `go`, overall 4/4; the [HTML report](evidence-boundary-labels-verdict.html) renders that receipt. The judge ran typecheck and the replay gate. A separate full test run passed 200 tests; the two new report-label assertions fail on the unchanged base.
+
+The tool-free Claude calls used the configured CLI authentication. A local launcher omitted `--bare`, which disables keychain discovery, while retaining the backend's empty tool, settings-source, and MCP arguments. Prompts, scoring, fixtures, and retained replay receipts were unchanged. This audit evaluates the named commit, not a human-calibrated estimate of judge accuracy.
+
+Public copies omit private accounting metadata. Original unedited receipts are retained privately. Scores, findings, citations, evaluated source identities, and failed or missed checks are unchanged.
