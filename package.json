@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "judge": "bun run src/cli.ts judge",
     "eval": "bun run src/cli.ts eval",
-    "calibrate": "bun run src/cli.ts calibrate"
+    "calibrate": "bun run src/cli.ts calibrate",
+    "demo": "bun run scripts/demo.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",
