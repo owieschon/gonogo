@@ -62,6 +62,15 @@ describe("I2 — blind-first, enforced by construction", () => {
     expect(rendered).toContain(ev.diff);
   });
 
+  test("a transcript that repeats spec text is not scrubbed; only a separate spec field is absent", () => {
+    const ev = evidence();
+    ev.transcript = `agent: the request said "${SPEC_SENTINEL}" so I did the thing.`;
+    const attachments = blindAttachments(blindPacket(ev));
+    expect(attachments.map((a) => a.name)).toEqual(["DIFF", "TRANSCRIPT"]);
+    expect(attachments.some((a) => a.name === "SPEC")).toBe(false);
+    expect(attachments.find((a) => a.name === "TRANSCRIPT")?.content).toContain(SPEC_SENTINEL);
+  });
+
   // The type-level half of the invariant: `blindAttachments(evidence())` must
   // not compile. Evidence has `diff` and `transcript`, so without the brand on
   // BlindPacket, TypeScript's structural typing would accept it and I2 would
