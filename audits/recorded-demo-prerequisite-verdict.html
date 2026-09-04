@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gonogo verdict — go</title>
+<style>
+  :root { color-scheme: light dark; --fg:#14171a; --bg:#fbfbf9; --mut:#5b6169; --line:#dcdcd6; --card:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e8e8e4; --bg:#16181a; --mut:#9aa1a9; --line:#2e3236; --card:#1d2022; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width: 46rem; margin:0 auto; padding: 1.25rem 1rem 4rem; }
+  header { border-bottom:2px solid var(--line); padding-bottom:.85rem; margin-bottom:1.25rem; }
+  .verdict { display:inline-block; background:#1a7f37; color:#fff; font-weight:700;
+             letter-spacing:.06em; text-transform:uppercase; font-size:1rem;
+             padding:.3rem .7rem; border-radius:4px; }
+  .overall { color:var(--mut); font-size:.85rem; margin-left:.5rem; }
+  h1 { font-size:1.05rem; margin:.7rem 0 .2rem; font-weight:600; }
+  h2 { font-size:.75rem; text-transform:uppercase; letter-spacing:.09em; color:var(--mut);
+       margin:1.9rem 0 .6rem; font-weight:700; }
+  h3 { margin:0 0 .2rem; font-size:.95rem; display:flex; align-items:center; gap:.5rem; }
+  .score { display:inline-flex; align-items:center; justify-content:center; min-width:1.7rem;
+           height:1.7rem; padding:0 .4rem; border-radius:4px; color:#fff; font-weight:700;
+           font-size:.85rem; font-variant-numeric:tabular-nums; }
+  .dname { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.88rem; }
+  .dim { background:var(--card); border:1px solid var(--line); border-radius:6px;
+         padding:.8rem .9rem; margin-bottom:.7rem; }
+  .blurb { color:var(--mut); font-size:.8rem; margin:.1rem 0 .5rem; }
+  .reason { margin:.35rem 0 .55rem; }
+  .cites { margin:.4rem 0 0; padding-left:1.05rem; }
+  .cites li { margin:.28rem 0; }
+  .cites code, .nocite code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        font-size:.78rem; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--fg); }
+  .nocite { color:var(--mut); font-size:.8rem; font-style:italic; }
+  .summary { background:var(--card); border:1px solid var(--line); border-left:4px solid #1a7f37;
+             border-radius:6px; padding:.9rem; }
+  .inferred { background:var(--card); border:1px solid var(--line); border-radius:6px;
+              padding:.9rem; font-style:italic; }
+  table { border-collapse:collapse; width:100%; font-size:.82rem; }
+  td, th { text-align:left; padding:.32rem .5rem .32rem 0; vertical-align:top;
+           border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  th { color:var(--mut); font-weight:600; white-space:nowrap; width:11rem; }
+  code, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem; }
+  ul.files { margin:.2rem 0; padding-left:1.05rem; }
+  ul.files li { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem;
+                overflow-wrap:anywhere; }
+  footer { margin-top:2.5rem; color:var(--mut); font-size:.75rem; border-top:1px solid var(--line);
+           padding-top:.7rem; }
+  .gaming { background:#a30d1f18; border:1px solid #a30d1f66; border-left:4px solid #a30d1f;
+            border-radius:6px; padding:.85rem; margin:1.2rem 0 0; font-size:.86rem; }
+  .gaming ul { margin:.5rem 0 0; padding-left:1.05rem; }
+  .gaming code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.78rem;
+                 white-space:pre-wrap; overflow-wrap:anywhere; }
+  .warn { background:#9a4b0022; border:1px solid #9a4b0066; border-radius:4px;
+          padding:.5rem .7rem; font-size:.8rem; margin-top:.7rem; }
+</style>
+</head><body>
+<p class="muted">Public copy. Private accounting metadata omitted; evaluation results are unchanged.</p><div class="wrap">
+
+<header>
+  <span class="verdict">go</span><span class="overall">overall 4 / 4 · min across four dimensions · judge confidence 0.72</span>
+  <h1>gonogo verdict — go</h1>
+  <div class="mono" style="color:var(--mut)">/Users/owieschon/.superset/worktrees/03f19dc8-78cc-45c9-814e-9925cfba68fb/feat/recorded-verdict-demo · base <code>59b0742d18f2</code> · head <code>1fb7e5ac813e</code></div>
+</header>
+
+
+
+<h2>Summary</h2>
+<div class="summary">The diff adds scripts/demo.ts and src/demo.ts wiring the existing fixture/evidence/replay/report pipeline into a bun run demo command pinned to the merged-but-wrong fixture and claude-sonnet-5, writes verdict.json/verdict.html with the required version, subject-hash, and provenance fields, and ships three focused tests proving the backend is never invoked (on both a replay hit and a replay miss) and that the root events.jsonl is left untouched, alongside the requested README quickstart line and the AGENTS.md prerequisite correction. The one soft spot is that TEST_RESULT only shows tsc --noEmit and the replay-based gonogo eval succeeding, not an explicit bun test run covering the new demo.test.ts, so full test-suite passage is inferred rather than directly evidenced; nothing in the diff or commit message overstates this, so it does not lower claim_verification.</div>
+<p class="blurb">drift type: <code>none</code></p>
+
+<h2>Dimensions</h2>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">task_satisfaction</span></h3>
+  <p class="blurb">does the work satisfy the spec as written</p>
+  <p class="reason">The diff delivers a demo.ts that composes loadFixture/materialize/collectEvidence/runJudge/renderHtml pinned to the merged-but-wrong fixture and claude-sonnet-5, a bun run demo script, tests asserting zero backend calls on both the hit and replay-miss paths and an unchanged events.jsonl, a one-line README quickstart, and a corrected AGENTS.md prerequisite sentence. Every concrete artifact the spec names (verdict.json/verdict.html with version, subject hash, replay provenance; no-live-call and no-fallback boundaries; doc corrections) is present and testable in the diff itself.</p>
+  <ul class="cites"><li><code>export const DEMO_FIXTURE = &quot;merged-but-wrong&quot;;</code></li><li><code>export const DEMO_MODEL = &quot;claude-sonnet-5&quot;;</code></li><li><code>expect(verdictFile.provenance.gonogo_version).toBe(GONOGO_VERSION);</code></li><li><code>expect(verdictFile.subject_hash).toMatch(/^[0-9a-f]{64}$/);</code></li><li><code>expect(verdictFile.provenance.replayed).toBe(true);</code></li><li><code>expect(spy.calls).toBe(0);</code></li><li><code>const after = readFileSync(ROOT_EVENTS_PATH, &quot;utf8&quot;);</code></li><li><code>Run `bun run demo [output directory]` to write `verdict.json` and `verdict.html` from the committed recording of the merged-but-wrong fixture. Install Bun, Git, and Node.js; the fixture runs its tests with Node.js. The demo invokes no live judge and requires no Claude CLI or credentials.</code></li><li><code>+`bun` is required for every run; the `claude` CLI is required only for a live</code></li></ul>
+</section>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">scope_discipline</span></h3>
+  <p class="blurb">changes beyond or beside the ask</p>
+  <p class="reason">Every changed file is directly required by the task: the demo script/module/tests, the package.json entry point, and the two doc corrections the spec explicitly asked for. Nothing unrelated is touched.</p>
+  <ul class="cites"><li><code>AGENTS.md</code></li><li><code>scripts/demo.ts</code></li><li><code>src/demo.test.ts</code></li><li><code>src/demo.ts</code></li></ul>
+</section>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">claim_verification</span></h3>
+  <p class="blurb">completion claims vs. actual evidence</p>
+  <p class="reason">The commit message's claims (no live call, no events.jsonl mutation, loud failure with no artifact on replay miss) are each backed by a corresponding assertion in the new test file rather than left as bare assertions. No claim in the commit message overreaches what the diff and tests demonstrate; TEST_RESULT independently shows typecheck and the replay evaluation passing, consistent with what was claimed.</p>
+  <ul class="cites"><li><code>fails loudly with the existing replay-miss diagnostic and no artifact.</code></li><li><code>expect(spy.calls).toBe(0);</code></li><li><code>).rejects.toThrow(/no cache entry|replay/i);</code></li></ul>
+</section>
+<section class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span>
+  <span class="dname">goal_alignment</span></h3>
+  <p class="blurb">spec vs. the blind-pass inferred goal</p>
+  <p class="reason">INFERRED_GOAL describes exactly the objective the spec states: a credential-free demo composing the existing pipeline against the merged-but-wrong fixture with recorded replay, tests for the no-live-call/no-mutation boundaries, and the doc correction — an independent reader reconstructed the assigned task from the diff alone.</p>
+  <ul class="cites"><li><code>export async function runDemo(opts: RunDemoOptions): Promise&lt;RunDemoResult&gt; {</code></li><li><code>The agent was adding a self-contained demo mode to the gonogo tool that renders a sample verdict (verdict.json/verdict.html) from a committed replay receipt for the &quot;merged-but-wrong&quot; fixture, without invoking a live judge or requiring Claude CLI/credentials.</code></li></ul>
+</section>
+
+<h2>Blind pass — inferred goal</h2>
+<div class="inferred">The agent was adding a self-contained demo mode to the gonogo tool that renders a sample verdict (verdict.json/verdict.html) from a committed replay receipt for the &quot;merged-but-wrong&quot; fixture, without invoking a live judge or requiring Claude CLI/credentials. This included a new `bun run demo` script and `src/demo.ts`, tests verifying no backend calls or event-log writes occur, and doc updates clarifying that only Bun (not the `claude` CLI) is required for such replay-based runs.</div>
+<p class="blurb">Written by a judge call that saw only the diff and transcript, never the spec.
+<code>goal_alignment</code> scores the gap between this and the actual spec.</p>
+
+<h2>Reported, not scored</h2>
+<div class="dim">
+  <h3><span class="score" style="background:#1a7f37">4</span><span class="dname">spec_clarity</span></h3>
+  <p class="blurb">how judgeable the spec itself was — this scores the spec's author, not the agent</p>
+  <p class="reason">The spec names the exact command signature, the fixture/model identity to pin, the required output fields, and three explicit negative boundary conditions to test — an implementer or reviewer can check each one directly against the diff.</p>
+</div>
+
+<h2>Evidence</h2>
+<table>
+  <tr><th>changed files</th><td><ul class="files"><li>AGENTS.md</li><li>README.md</li><li>package.json</li><li>scripts/demo.ts</li><li>src/demo.test.ts</li><li>src/demo.ts</li></ul></td></tr>
+  <tr><th>diffstat</th><td><code>AGENTS.md        |   5 +--
+ README.md        |   2 ++
+ package.json     |   3 +-
+ scripts/demo.ts  |  30 ++++++++++++++++
+ src/demo.test.ts | 104 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/demo.ts      |  78 +++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 219 insertions(+), 3 deletions(-)</code></td></tr>
+  <tr><th>test command</th><td><code>bunx tsc --noEmit &amp;&amp; ./bin/gonogo eval --replay --k 3 --events &quot;/private/tmp/gonogo-self-audit-recorded-demo-prerequisite/eval-events.jsonl&quot;</code> → exit 0</td></tr>
+  <tr><th>transcript</th><td>not provided</td></tr>
+  <tr><th>commit messages</th><td>2 commit(s)</td></tr>
+</table>
+
+
+<h2>Provenance</h2>
+<table>
+  <tr><th>gonogo version</th><td class="mono">0.1.6</td></tr>
+  <tr><th>source</th><td class="mono">blind pass: live judge; rubric pass: live judge</td></tr>
+  <tr><th>run id</th><td class="mono">2026-09-04T22-40-18-642Z</td></tr>
+  <tr><th>task id</th><td class="mono">—</td></tr>
+  <tr><th>workspace id</th><td class="mono">—</td></tr>
+  <tr><th>judge backend</th><td class="mono">claude-cli</td></tr>
+  <tr><th>model version</th><td class="mono">claude-sonnet-5</td></tr>
+  <tr><th>models reported</th><td class="mono">claude-haiku-4-5-20251001, claude-sonnet-5</td></tr>
+  <tr><th>prompt files</th><td class="mono">prompts/blind-pass.md <span style="color:var(--mut)">48375b8b1e5a9551</span><br>prompts/rubric-pass.md <span style="color:var(--mut)">8b54b6d884b1261c</span><br>prompts/rubric-pass.schema.json <span style="color:var(--mut)">f8b4f392480a1050</span><br>prompts/citation-repair.md <span style="color:var(--mut)">e341c8801c3e6f96</span><br>prompts/citation-repair.schema.json <span style="color:var(--mut)">85e1355dc71353e1</span></td></tr>
+  <tr><th>subject sha256</th><td class="mono">e3350e61feba59890db782fa164932978e5c2aec0397a922cbdc52980465b869</td></tr>
+  <tr><th>spec sha256</th><td class="mono">8d5bd68b67ab69bcb06e02cf7e09e9e3ab95a2d387cb298933826bde0ca88f6f</td></tr>
+  <tr><th>diff sha256</th><td class="mono">9b33c0bd99b7dacf753895fe8dfc3537334a44eab28f2eaa60b7e8fd1095e80e</td></tr>
+  <tr><th>started</th><td class="mono">2026-09-04T22:40:30.092Z</td></tr>
+  <tr><th>duration</th><td class="mono">119.3s</td></tr>
+</table>
+
+<footer>
+  Generated by gonogo 0.1.6. The overall verdict is the minimum of the four
+  scored dimensions, not their average — a failure on one axis is not paid for by strength on
+  another. Scoring rules: RUBRIC.md.
+</footer>
+
+</div></body></html>
