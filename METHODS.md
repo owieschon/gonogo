@@ -105,6 +105,112 @@ deterministic gates over the catastrophic classes, a small blast radius, a
 recorded track record, and sampling that never goes to zero. gonogo is a smoke
 detector, not a fire department. Full argument in DESIGN.md.
 
+## 3. Evaluation packet contract
+
+This section defines what a researcher must freeze before a reviewer sees a
+case, for the question this whole effort exists to answer: **does GoNoGo catch
+consequential errors that ordinary one-pass review, given the same available
+evidence, misses?** That is a retrospective, outcome-blinded comparison — a
+reviewer scores a completed case without knowing what happened next — and it
+is a different claim from prospective agent-task calibration (section 2),
+where a human rates a real run as it lands. Neither substitutes for the
+other, and results from one are never reported as the other.
+
+**Executable check, not a study.** `gonogo validate-packet` (`src/packet.ts`)
+is an offline, read-only integrity and eligibility gate. It checks that a
+packet's declared identity matches its actual bytes, that comparison arms
+review the same underlying evidence, and that exposed cases cannot claim
+untouched-holdout status. It is not a detector of arbitrary semantic leakage
+in free text, and a pass from it is not a claim that a real study has been
+frozen. This unit ships the checker and its tests; it selects no holdout,
+downloads no source, and calls no judge or model panel.
+
+### Packet identity
+
+A packet (`packet.json` plus the files it references) declares:
+
+- `schema`, `packet_version` — versioned so a later contract change cannot be
+  read as this one.
+- `case_id` — required; a packet with no identity cannot be scored against
+  anything.
+- `provenance: known|unknown` — `unknown` fails closed. A case whose origin
+  cannot be stated is not evidence of anything.
+- `exposure: untouched|development|unknown` — `unknown` fails closed.
+  `untouched` is checked against the operator's own exposure log (case ids
+  already seen during development); a hit there fails closed even though the
+  packet claims `untouched`. A `development` case can still pass every other
+  check — it stays usable as a labeled development case — but it is never
+  holdout-eligible. The exposure log itself is supplied by the caller and is
+  never discovered or written by the validator.
+- `protocol_files`, `instrument_files` — the frozen protocol document(s) and
+  judge instrument/prompt files, each declared with a path and sha256 checked
+  against the actual bytes on disk, not against a nonempty string.
+- `arms` — one or more review arms (e.g. `gonogo`, `one_pass`). Each arm
+  declares a `subject_hash` (the model-independent identity of its raw,
+  pre-elision evidence — the same `subjectHashOf` used everywhere else in
+  this repo) and an `evidence_hash` (the identity of exactly what bytes a
+  reviewer is shown for that arm). These are never treated as
+  interchangeable: two arms of one case must share the same `subject_hash`
+  — the same underlying evidence — even when their `evidence_hash` differs
+  because they render it differently. Arms whose `subject_hash` differs are
+  a different case, not a paired comparison, and fail closed.
+- `forbidden_markers` — exact strings that must not appear in any arm's
+  review-facing files, e.g. a literal answer key or outcome marker. This is
+  a named-marker check, not a semantic scan.
+
+Every named failure carries one of a fixed set of reasons
+(`DISQUALIFY_REASON` in `src/packet.ts`): `malformed_metadata`,
+`missing_identity`, `protocol_digest_mismatch`, `payload_digest_mismatch`,
+`arm_evidence_mismatch`, `unknown_provenance`, `unknown_exposure_state`,
+`forbidden_review_material`, `exposed_case_claims_untouched`. A packet with
+any failure never passes; there is no partial credit.
+
+### Contamination and other limits this check cannot close
+
+Model pretraining contamination cannot be disproved by a manifest: a case
+built from public material may already be inside a judge model's training
+data regardless of what the packet declares, and no digest check can detect
+that. Passing packet validation is a statement about packaging integrity —
+declared identity matches actual bytes, arms match, exposure is declared and
+checked against a log — not a statement that a case is free of contamination,
+free of semantic leakage in free text, or otherwise a clean scientific
+instrument.
+
+### What a future frozen study must still add
+
+This unit defines the contract and ships the checker; it does not freeze a
+real study. Before any accuracy claim is made from packets validated this
+way, a concrete, reviewed manifest must additionally state:
+
+- **Selection and exclusion rules**, predeclared before case access —
+  including a small human-review pilot with fixed stopping rules, agreed
+  before the pilot sees its first case.
+- **Denominators.** False-go: consequential errors GoNoGo missed, divided by
+  consequential errors present. False-alarm: cases GoNoGo flagged that
+  one-pass review and adjudication agree were not consequential errors,
+  divided by cases flagged. Coverage: cases where both arms produced a usable
+  verdict, divided by cases attempted. None of these are computed by the
+  validator; they are computed later, over a frozen sample, and reported with
+  the sample size that supports them — not asserted at a precision the sample
+  cannot carry.
+- **Paired one-pass comparison**, arm-for-arm on identical evidence (the
+  `arm_evidence_mismatch` check exists so this pairing cannot silently drift),
+  and **human review time** per case, recorded alongside the verdict.
+- **Human pre-model judgment kept separate from later adjudication.** A
+  reviewer's first read, before seeing any model output, is a different
+  record from an adjudicated verdict informed by additional evidence
+  afterward; the two are never merged into one number. Disagreement,
+  abstention and tool error are preserved as outcomes, not discarded or
+  folded into agreement.
+- Consistent with the rest of this document: a merged PR, a passing test
+  suite, model-family agreement, or one operator's labels are not correctness,
+  and a pilot is feasibility evidence for running the study, not authorization
+  to merge on its results.
+
+Original missing specs or transcripts are marked missing in the packet, never
+reconstructed and presented as original — a reconstructed artifact answers a
+different question than the one this protocol asks.
+
 ### What the numbers do not establish
 
 `gonogo eval` measures the judge against seven labels that the same person wrote
