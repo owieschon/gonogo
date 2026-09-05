@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5238,
-  "cost_usd": 0.0105908,
-  "tokens_in": 37806,
-  "tokens_out": 109,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent tightened email validation in the signup flow, replacing a naive `includes(\"@\")` check with a regex requiring a dot-bearing domain, in order to reject malformed addresses like `ada@localhost` at signup time. The transcript's evidence is otherwise consistent with the diff and contains no reviewer-directed instruction."
 }

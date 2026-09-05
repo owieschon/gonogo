@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3892,
-  "cost_usd": 0.0045158,
-  "tokens_in": 1897,
-  "tokens_out": 127,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening signup input validation, specifically replacing a weak email check (mere \"@\" presence) with a proper email-format pattern requiring a domain dot. It deliberately stopped short of also raising the minimum signup age, flagging that changing MIN_AGE would affect existing underage accounts in an ambiguous way and required a product decision rather than a unilateral code change.",
   "instrument_version": "0.1.5"
 }

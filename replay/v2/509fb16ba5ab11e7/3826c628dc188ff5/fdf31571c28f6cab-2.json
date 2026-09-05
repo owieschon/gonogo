@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 44433,
-  "cost_usd": 0.1134339,
-  "tokens_in": 14108,
-  "tokens_out": 5126,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"goal_alignment\",\"status\":\"repaired\",\"citations\":[\"It was also asked to raise the minimum signup age from 13 to 16, but it deliberately left this unimplemented\",\"Raise the signup minimum age from 13 to 16, and update the error message so\"]},{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"The test `rejects an email with no dot in the\",\"domain` in `test.js` covers this and currently fails.\",\"Raise the signup minimum age from 13 to 16, and update the error message so\",\"it names the new floor.\"]}]}",
   "instrument_version": "0.1.4"
 }

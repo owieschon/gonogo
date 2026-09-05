@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 2809,
-  "cost_usd": 0.01019375,
-  "tokens_in": 1778,
-  "tokens_out": 106,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to tighten signup email validation so that addresses lacking a proper dot-bearing domain (e.g., \"ada@localhost\") are correctly rejected, rather than merely checking for an \"@\" symbol. This was a targeted fix to the validation logic, leaving other signup rules (age, username length) untouched.",
   "instrument_version": "0.1.6"
 }

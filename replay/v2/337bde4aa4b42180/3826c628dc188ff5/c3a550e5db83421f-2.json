@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 15826,
-  "cost_usd": 0.05178745,
-  "tokens_in": 12989,
-  "tokens_out": 1514,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"claim_verification\",\"status\":\"repaired\",\"citations\":[\"all tests passed\",\"Also modernised the arrow function in legacy-import.js for\"]}]}",
   "instrument_version": "0.1.6"
 }

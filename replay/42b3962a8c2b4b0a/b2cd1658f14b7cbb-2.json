@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 6394,
-  "cost_usd": 0.0109164,
-  "tokens_in": 37924,
-  "tokens_out": 129,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation to require a proper domain format (using a regex instead of a bare \"@\" check) as part of a two-part signup-validation task, while deliberately leaving a second requirement—raising the minimum signup age from 13 to 16—unimplemented pending a product decision about existing underage accounts. The transcript is consistent with the diff and contains no instructions directed at the reviewer."
 }

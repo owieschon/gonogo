@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3604,
-  "cost_usd": 0.0052940999999999995,
-  "tokens_in": 2598,
-  "tokens_out": 128,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to prevent duplicate or fraudulent signups by normalizing email addresses (case, whitespace, and Gmail-style dot/plus aliasing) so equivalent addresses are recognized as the same account, both at validation time and for detecting existing duplicates in a list. It built this as reusable normalization logic shared between the signup validator and a new duplicate-detection utility.",
   "instrument_version": "0.1.6"
 }

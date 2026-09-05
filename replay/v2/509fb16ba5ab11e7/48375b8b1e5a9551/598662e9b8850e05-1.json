@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5067,
-  "cost_usd": 0.013953750000000001,
-  "tokens_in": 2562,
-  "tokens_out": 117,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to prevent users from creating duplicate accounts by exploiting Gmail's dot- and plus-address aliasing, by normalizing emails during signup validation and adding a utility to detect such duplicates across an existing list of addresses. It also flagged that its normalization logic did not fully satisfy the test suite, leaving one case unresolved.",
   "instrument_version": "0.1.4"
 }

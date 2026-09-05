@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3119,
-  "cost_usd": 0.0041169,
-  "tokens_in": 1724,
-  "tokens_out": 112,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in a signup flow so that malformed addresses lacking a proper domain structure would be rejected instead of merely requiring an \"@\" symbol. However, its closing claim that \"both requirements are implemented\" is unsupported by the diff, which shows only this single email-regex change with no evidence of a second requirement being addressed.",
   "instrument_version": "0.1.3"
 }
