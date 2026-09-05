@@ -11,6 +11,7 @@ import { runEval } from "./eval.ts";
 import { runCalibrate } from "./calibrate.ts";
 import { serializeCacheEntry } from "./replay.ts";
 import { makeBackend } from "./judges/index.ts";
+import { validatePacket } from "./packet.ts";
 import {
   EVENT_SCHEMA_VERSION,
   appendEvent,
@@ -53,6 +54,11 @@ const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed ag
   gonogo outcome --task <id> --pr <url> --state merged|closed|abandoned
                  [--run <run_id>] [--merged-at <iso8601>]
 
+  gonogo validate-packet --packet <dir> [--exposure-log <file>]
+                 checks a versioned evaluation packet's declared identity
+                 against actual bytes before any reviewer sees it. Offline,
+                 read-only, no judge calls. See METHODS.md section 3.
+
 Flags:
   --spec        the task prompt the agent was given; a path if it exists, else literal text
   --repo        repository the agent worked in (default: .)
@@ -87,6 +93,7 @@ const COMMAND_FLAGS: Record<string, ReadonlySet<string>> = {
   eval: new Set(["k", "replay", "record", "only", "judge", "markdown", "events"]),
   calibrate: new Set(["dir", "repo", "events"]),
   outcome: new Set(["task", "pr", "state", "run", "merged-at", "events"]),
+  "validate-packet": new Set(["packet", "exposure-log"]),
   help: new Set(),
   "--help": new Set(),
   "-h": new Set(),
@@ -381,6 +388,38 @@ function cmdOutcome(args: Args): number {
   return EXIT.go;
 }
 
+/** Reads the caller's own exposure log; never discovered, never written here. */
+function readExposureLog(path: string | undefined): ReadonlySet<string> {
+  if (path === undefined) return new Set();
+  if (!existsSync(path)) die(`--exposure-log ${path} does not exist`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    die(`--exposure-log ${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === "string")) {
+    die(`--exposure-log ${path} must be a JSON array of case_id strings`);
+  }
+  return new Set(parsed as string[]);
+}
+
+function cmdValidatePacket(args: Args): number {
+  const packetDir = str(args, "packet");
+  if (!packetDir) die("--packet is required (a directory containing packet.json)");
+  const exposed = readExposureLog(str(args, "exposure-log"));
+  const result = validatePacket(resolve(packetDir), exposed);
+  if (result.ok) {
+    console.log(`PASS  case ${result.case_id}`);
+    console.log(`  subject_hash: ${result.subject_hash}`);
+    console.log(`  holdout_eligible: ${result.holdout_eligible}`);
+    return EXIT.go;
+  }
+  console.log(`FAIL${result.case_id ? `  case ${result.case_id}` : ""}`);
+  for (const f of result.failures) console.log(`  [${f.reason}] ${f.detail}`);
+  return EXIT.noGo;
+}
+
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 
@@ -400,6 +439,9 @@ try {
       break;
     case "outcome":
       code = cmdOutcome(args);
+      break;
+    case "validate-packet":
+      code = cmdValidatePacket(args);
       break;
     case "--version":
     case "version":

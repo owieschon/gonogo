@@ -24,6 +24,9 @@ tool, not its operator.
     bun test                          # invariant tests; must pass before you push
     ./bin/gonogo calibrate --repo <p> # judge-vs-human agreement for target repo
     ./scripts/self-judge.sh --spec SPEC.md             # judge this repo's own diff
+    ./bin/gonogo validate-packet --packet <dir> [--exposure-log <file>]
+                                       # offline evaluation-packet integrity/eligibility
+                                       # check; see METHODS.md section 3
 
 `bun` is required for every run; the `claude` CLI is required only for a live
 one. `--replay` needs neither the `claude` CLI nor judge credentials, which is
@@ -41,6 +44,7 @@ why CI uses it.
     src/report.ts       verdict.json -> self-contained verdict.html
     src/eval.ts         accuracy and variance over fixtures/
     src/calibrate.ts    judge-vs-human agreement
+    src/packet.ts       offline evaluation-packet identity/eligibility contract
     src/judges/         JudgeBackend interface; claude.ts is the only real one
     prompts/            every judge prompt, versioned, hashed into provenance
     fixtures/           seven labeled cases; _base/ is the shared starting repo
