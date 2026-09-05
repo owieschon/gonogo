@@ -143,26 +143,43 @@ A packet (`packet.json` plus the files it references) declares:
   attestation, not proof: the checker cannot verify that a claimed origin is
   true, only that one was declared.
 - `exposure: untouched|development|unknown` — `unknown` fails closed.
-  `untouched` is checked against the operator's own exposure log (case ids
-  already seen during development, e.g. cases discussed, opened, or
+  `untouched` is checked against the operator's own exposure record (case
+  ids already seen during development, e.g. cases discussed, opened, or
   otherwise looked at before this contract existed); a hit there fails
-  closed even though the packet claims `untouched`. Critically, **omitting
-  the exposure log is not the same as supplying an empty one** — a caller
-  who supplies no record at all gets `exposure_record_not_supplied`, never a
-  silent pass, because "nobody checked" and "checked and found nothing" are
-  different claims and only the second can back an `untouched` decision. A
-  `development` case can still pass every other check — it stays usable as a
-  labeled development case — but it is never holdout-eligible.
+  closed even though the packet claims `untouched`. The exposure record
+  itself is a versioned object (`{"schema": "gonogo/exposure-log@1",
+  "complete": true|false, "exposed_case_ids": [...], "covered_through"?:
+  "YYYY-MM-DD"}`), not a bare array of ids: **omitting the exposure record
+  is not the same as supplying an incomplete one, and supplying an
+  incomplete one is not the same as supplying a complete one.** A caller who
+  supplies no record gets `exposure_record_not_supplied`; one who supplies a
+  record with `complete: false` (or no `complete` field at all — a bare
+  array is refused outright as the wrong shape) gets
+  `exposure_record_incomplete`; only an explicit `complete: true` can back
+  an `untouched` decision. An optional `covered_through` date must reach at
+  least the packet's own `data_cutoff` or the record is likewise
+  `exposure_record_incomplete` for this packet's declared window — checked
+  against the calendar, not by string prefix. None of this proves the
+  record is historically true; it makes the operator's completeness claim
+  explicit and fail-closed instead of implicit and silently assumed. A
+  `development` case can still pass every other check — it stays usable as
+  a labeled development case — but it is never holdout-eligible.
 - `data_cutoff` — a real calendar date (`YYYY-MM-DD`, validated against the
-  calendar, not merely pattern-matched) marking the declared boundary past
-  which no material may enter what a reviewer sees.
+  calendar, not merely pattern-matched — `2026-02-30` and trailing garbage
+  after a valid-looking prefix are both refused) marking the declared
+  boundary past which no material may enter what a reviewer sees.
 - `evidence` — the one shared evidence collection every arm's declared review material must reference:
   - `payload_file` — a single file, declared with a path, sha256 and role
     (`review`), checked against actual bytes on disk. Its parsed content
-    must have the exact shape the rest of this repo hashes evidence as
-    (`spec`/`diff`/`commitMessages` strings, `transcript` null-or-string,
-    `test` null or `{command, exitCode, output}`) — a malformed payload is a
-    named refusal, never a crash.
+    must have *exactly* the shape the rest of this repo hashes evidence as —
+    exactly the keys `spec`/`diff`/`commitMessages`/`transcript`/`test`, no
+    more and no fewer (nested `test` is likewise exactly `command`/
+    `exitCode`/`output`); an extra top-level or nested key is refused even
+    though `subjectHashOf` would silently ignore it, because a reviewer sees
+    the whole file, not just the hashed tuple. `exitCode` must be a finite
+    integer — a value like `1e309`, which JSON parses to `Infinity`, is
+    refused rather than silently normalized away by `JSON.stringify`. A
+    malformed payload is a named refusal, never a crash.
   - `subject_hash` — the model-independent identity of `payload_file`'s
     content (the same `subjectHashOf` used everywhere else in this repo),
     recomputed and checked, never trusted from the manifest alone.
@@ -171,6 +188,14 @@ A packet (`packet.json` plus the files it references) declares:
     prefix is not an identity, since two different commits can share one.
   - `artifact_provenance` — per material (`spec`, `diff`, `commit_messages`,
     `transcript`, `test`), one of `original`, `missing`, or `reconstructed`.
+    This is an attestation the checker cannot prove — but "missing" versus
+    "present" is not: it is mechanically visible in `payload_file` itself,
+    and a declaration that contradicts it is refused. `transcript`/`test`
+    are nullable in the payload, so absence is `=== null`; `spec`/`diff`/
+    `commitMessages` are required strings with no null case, so the
+    documented representation of "missing" for them is the empty string
+    `""` — declaring `missing` for a field that actually has content, or
+    declaring anything else for a field that has none, both fail closed.
     An artifact that is honestly `missing` does not disqualify a case; one
     marked `reconstructed` is never eligible for untouched holdout, because
     reconstructed material is not the original evidence a genuine untouched
@@ -183,19 +208,34 @@ A packet (`packet.json` plus the files it references) declares:
   declared path. A packet cannot pass by only matching its own manifest's
   digest of itself; the CLI requires at least one `--expected-protocol
   <declaredPath>=<localTrustedFile>` and every declared protocol file must
-  match a pin, not merely be internally self-consistent.
-- `arms` — one or more review arms (e.g. `gonogo`, `one_pass`). Each arm's
-  declared `review_files` must equal, byte for byte, exactly
-  `[evidence.payload_file]` — the same file `subject_hash` was computed
-  from, not a second file that merely claims to represent it. This makes
-  "the arms declare different review material," or "an arm's declared
-  material is something other than what subject_hash covers," a structural
-  refusal (`arm_evidence_mismatch`) rather than a gap left open by
-  independently-declared, unlinked hashes — and it holds regardless of
-  whether a reviewer ever actually opens the file. Arm-specific framing
-  goes in a separate, optional `instructions_files` list — never in
-  `review_files` — and both lists are scanned for `forbidden_markers` and
-  checked against file roles.
+  match a pin, not merely be internally self-consistent — and the match must
+  be a real bijection: a pin naming a path `protocol_files` never declares
+  is refused too, so a caller cannot believe a second frozen document is
+  part of the packet while the packet silently disagrees. The local file
+  behind a pin is also checked, canonically, to not be the packet's own
+  file, a symlink alias of it, or a hard link to it (same device and
+  inode) — the packet under test cannot supply its own external truth under
+  a different name. This still cannot prove the reference's *historical*
+  independence — it is a caller attestation that the file was not lifted
+  from this packet, not a signing or provenance system.
+- `arms` — one or more review arms (e.g. `gonogo`, `one_pass`), each with a
+  **non-empty, unique** `name`. Each arm's declared `review_files` must
+  equal, byte for byte, exactly `[evidence.payload_file]` — the same file
+  `subject_hash` was computed from, not a second file that merely claims to
+  represent it. This makes "the arms declare different review material," or
+  "an arm's declared material is something other than what subject_hash
+  covers," a structural refusal (`arm_evidence_mismatch`) rather than a gap
+  left open by independently-declared, unlinked hashes — and it holds
+  regardless of whether a reviewer ever actually opens the file.
+  Arm-specific framing goes in a separate, optional `instructions_files`
+  list — never in `review_files`. An arm's `evidence_hash` binds *both*
+  lists together (review files and instruction files), so changed
+  instruction bytes with a stale, un-recomputed `evidence_hash` fail closed
+  exactly like changed review bytes would; two arms with the same shared
+  evidence but different, correctly recomputed instructions legitimately
+  carry different `evidence_hash` values, which stays valid. `subject_hash`
+  is never widened to cover instructions — it stays the narrower identity of
+  the raw evidence tuple alone.
 - Every file everywhere (`protocol_files`, `instrument_files`,
   `review_files`, `instructions_files`) declares a `role`. `answer`,
   `outcome` and `post_cutoff` are real roles a packet can use elsewhere, but
@@ -204,7 +244,16 @@ A packet (`packet.json` plus the files it references) declares:
   whatever `forbidden_markers` does or does not name. A caller-chosen marker
   list that happens to be empty is not, by itself, a guarantee that answer
   or outcome material stays out; the role check is what actually enforces
-  that boundary.
+  that boundary. One physical file (identified by device and inode, so a
+  symlink or hard link alias cannot dodge this) is refused a second,
+  conflicting role if it appears in a different list elsewhere in the same
+  packet — a protocol file cannot separately be declared an instrument file.
+  The same file appearing with the *same* role in more than one place (e.g.
+  every arm's `review_files` pointing at the one shared evidence file)
+  remains legitimate reuse, not a conflict. A duplicate declaration of the
+  same physical file *within* one single list is refused regardless of
+  role — a list is not a set here, and a repeated entry only pads or
+  confuses it.
 - `forbidden_markers` — exact strings that must not appear in any arm's
   review-facing or instruction files. This is a named-marker check, not a
   semantic scan; every entry must be a string, and a non-string entry is
@@ -219,8 +268,9 @@ Every named failure carries one of a fixed set of reasons
 `missing_identity`, `unsafe_path`, `protocol_digest_mismatch`,
 `payload_digest_mismatch`, `unknown_provenance`, `unknown_exposure_state`,
 `forbidden_review_material`, `exposed_case_claims_untouched`,
-`exposure_record_not_supplied`, `arm_evidence_mismatch`. A packet with any
-failure never passes; there is no partial credit.
+`exposure_record_not_supplied`, `exposure_record_incomplete`,
+`arm_evidence_mismatch`. A packet with any failure never passes; there is no
+partial credit.
 
 ### Contamination and other limits this check cannot close
 
@@ -248,16 +298,66 @@ accuracy claim is made from packets validated this way, a concrete, reviewed
 manifest must additionally state, with no real cases, selection, or
 judgments made yet:
 
-- **Selection, exclusion and stopping defaults, predeclared before case
-  access.** A concrete small feasibility-pilot default (not yet exercised,
-  and not itself a claim that a study is frozen): draw only from cases
-  already labeled `development` or from synthetic fixtures — never from an
-  untouched holdout — target on the order of 8-12 cases, exclude any case
-  whose `source.base`/`source.head` do not resolve in an available
-  repository, and stop at whichever comes first of (a) the target count, or
-  (b) two consecutive adjudication reversals, with the pilot reviewed before
-  any extension. These defaults are a starting point for a real design
-  review, not the design itself.
+- **Selection, exclusion and stopping rule, predeclared before case access.**
+  A concrete small feasibility-pilot default (not yet exercised, not yet
+  backed by any actual inventory, and not itself a claim that a study is
+  frozen or run):
+  - **Target:** exactly 10 cases. Not a range — a range leaves the actual
+    stopping point to be chosen after seeing results, which is what a
+    predeclared rule exists to prevent.
+  - **Frozen eligible population, named before the draw, not "as of run
+    date."** Eligibility is not "every development-labeled thing that exists
+    when someone gets around to running this" — that population can grow
+    after a draw already happened, which makes the draw irreproducible. The
+    actual rule: before drawing, someone builds an **inventory manifest** —
+    a plain list of `case_id` values — and pins its own file digest (the
+    same external-pin pattern this contract already uses for protocol
+    identity: a sha256 computed by whoever runs the pilot, recorded in the
+    pilot record, checked against the manifest file's actual bytes). The
+    draw runs against that frozen manifest, never against a live scan of the
+    repository at draw time. Building that inventory is exactly the "no
+    inventory creation... now" this document is not doing yet.
+  - **What is eligible for that inventory:** a `case_id` may be listed only
+    if it names an actual evaluation-packet case — a directory containing a
+    `packet.json` that validates under `gonogo validate-packet` (schema
+    `gonogo/eval-packet@2`) with `exposure` declared `"development"`, or a
+    `packet.json` deliberately constructed as synthetic fixture data for
+    this pilot. This is **not** "every file under `calibration/synthetic/`"
+    — that directory holds synthetic *manual ratings* (`gonogo/human@1`
+    files), which are not evaluation-packet cases and satisfy no part of
+    this contract; a rating file is not a unit this pilot can draw.
+  - **Deterministic draw and order:** sort the frozen inventory's `case_id`
+    values by byte order (plain string sort, no randomness, no operator
+    discretion) and take the first 10 in that order.
+  - **Exact exclusions, applied to the sorted list in order, each one
+    skipped without being replaced:** a listed `case_id` is dropped — and
+    the draw continues to the next id in sorted order, still aiming for
+    10 — if its `packet.json` fails `gonogo validate-packet`; its
+    `provenance` is not `known`; its `evidence.source.base`/`.head` do not
+    resolve as commits in an available copy of the named repository; or its
+    `subject_hash` duplicates a case already accepted earlier in this same
+    draw (ties broken by sort order: the earlier `case_id` is kept, the
+    later one is the duplicate and is excluded, not the reverse).
+  - **Terminal exhaustion, made explicit:** if the sorted inventory (after
+    exclusions) contains fewer than 10 eligible cases, the draw stops when
+    it runs out — it does not wait for a count that cannot be reached. The
+    pilot then proceeds on however many were actually accepted, and both the
+    shortfall and every excluded `case_id` with its specific exclusion
+    reason are reported alongside the results; nothing is padded or
+    silently treated as if 10 had been reached.
+  - **Adjudication reversal, defined:** a reversal is one case where the
+    independent adjudicator's final verdict differs from the human reviewer's
+    recorded pre-model verdict for that same case (see below for why the
+    adjudicated reference is never compared to GoNoGo's own verdict here —
+    a reversal is about the human record, not about GoNoGo).
+  - **Stopping rule:** stop at whichever comes first — 10 accepted cases
+    reviewed and adjudicated, 2 reversals as defined above, or the frozen,
+    exclusion-filtered inventory running out before reaching 10 (terminal
+    exhaustion, above) — and review the pilot's results before drawing
+    against any later, newly-frozen inventory.
+  This is a predeclared default awaiting a real design review, not a study
+  result: no inventory has been built, no case has been drawn, reviewed, or
+  adjudicated under it, and none is drawn or accessed by writing this rule.
 - **Denominators, kept distinct and never inferred from one another.**
   *Error miss rate* — consequential errors GoNoGo failed to flag, divided by
   cases an independent adjudicator later confirms did contain a

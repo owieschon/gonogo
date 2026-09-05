@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import { runEval } from "./eval.ts";
 import { runCalibrate } from "./calibrate.ts";
 import { serializeCacheEntry } from "./replay.ts";
 import { makeBackend } from "./judges/index.ts";
-import { validatePacket, type ExposureCheck, type ExternalProtocolPin } from "./packet.ts";
+import { isValidIsoDate, validatePacket, type ExposureCheck, type ExternalProtocolPin } from "./packet.ts";
 import {
   EVENT_SCHEMA_VERSION,
   appendEvent,
@@ -391,11 +391,20 @@ function cmdOutcome(args: Args): number {
   return EXIT.go;
 }
 
+/** The only exposure-log shape `readExposureCheck` accepts. */
+const EXPOSURE_LOG_SCHEMA = "gonogo/exposure-log@1";
+
 /**
  * Reads the caller's own exposure log; never discovered, never written here.
  * Omitting `--exposure-log` means "no record supplied", not "empty record" —
  * only the latter can back an "untouched" declaration, so the two must stay
  * distinguishable all the way into `validatePacket`.
+ *
+ * The file itself must be a versioned object, not a bare array: `complete`
+ * is the operator's explicit assertion that this record covers everything
+ * it should. A bare array of ids carries no such assertion, so it cannot
+ * back an "untouched" decision even when it happens to be empty —
+ * "I never checked" and "I checked and found nothing" must not look alike.
  */
 function readExposureCheck(path: string | undefined): ExposureCheck {
   if (path === undefined) return { supplied: false };
@@ -406,27 +415,76 @@ function readExposureCheck(path: string | undefined): ExposureCheck {
   } catch (error) {
     die(`--exposure-log ${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === "string")) {
-    die(`--exposure-log ${path} must be a JSON array of case_id strings`);
+  if (
+    typeof parsed !== "object" || parsed === null || Array.isArray(parsed) ||
+    (parsed as Record<string, unknown>).schema !== EXPOSURE_LOG_SCHEMA
+  ) {
+    die(
+      `--exposure-log ${path} must be an object with "schema": "${EXPOSURE_LOG_SCHEMA}" ` +
+      `(a bare array of case ids is no longer accepted: it asserts no completeness)`,
+    );
   }
-  return { supplied: true, exposedCaseIds: new Set(parsed as string[]) };
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj.complete !== "boolean") {
+    die(`--exposure-log ${path} must declare "complete": true or false`);
+  }
+  const idsRaw = obj.exposed_case_ids;
+  if (!Array.isArray(idsRaw) || !idsRaw.every((x) => typeof x === "string")) {
+    die(`--exposure-log ${path} "exposed_case_ids" must be a JSON array of strings`);
+  }
+  let coveredThrough: string | null = null;
+  if (obj.covered_through !== undefined) {
+    if (!isValidIsoDate(obj.covered_through)) {
+      die(`--exposure-log ${path} "covered_through", if present, must be a real YYYY-MM-DD calendar date`);
+    }
+    coveredThrough = obj.covered_through;
+  }
+  return { supplied: true, complete: obj.complete, coveredThrough, exposedCaseIds: new Set(idsRaw as string[]) };
+}
+
+/** True when both paths name one file on disk: same device, same inode (catches hard links). */
+function sameFileOnDisk(a: string, b: string): boolean {
+  try {
+    const left = statSync(a);
+    const right = statSync(b);
+    return left.dev === right.dev && left.ino === right.ino;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Builds the external protocol pin from `--expected-protocol <declaredPath>=<localFile>`,
  * hashing each local file ourselves — a trusted reference outside the packet,
- * never the packet's own declared digest of itself.
+ * never the packet's own declared digest of itself. This is a caller
+ * attestation of historical independence, not proof of it: what this
+ * function *can* enforce is that the reference is not literally the
+ * packet's own file, under any spelling — the same canonical path, a
+ * symlink alias, or a hard link (same device and inode) to it.
  */
-function readExpectedProtocol(args: Args): ExternalProtocolPin {
+function readExpectedProtocol(args: Args, packetDir: string): ExternalProtocolPin {
   const raw = args["expected-protocol"];
   const entries = raw === undefined ? [] : Array.isArray(raw) ? raw : [String(raw)];
   const pin = new Map<string, string>();
+  const canonicalPacketDir = canonicalPath(packetDir);
   for (const entry of entries) {
     const eq = entry.indexOf("=");
     if (eq <= 0) die(`--expected-protocol must be <declaredPath>=<localFile>, got "${entry}"`);
     const declaredPath = entry.slice(0, eq);
     const localFile = entry.slice(eq + 1);
     if (!existsSync(localFile)) die(`--expected-protocol local file "${localFile}" does not exist`);
+    const canonicalLocal = canonicalPath(localFile);
+    const packetCandidate = resolve(packetDir, declaredPath);
+    const insidePacket = canonicalLocal === canonicalPacketDir
+      || canonicalLocal.startsWith(`${canonicalPacketDir}${sep}`);
+    const aliasesDeclaredFile = isSamePath(localFile, packetCandidate) || sameFileOnDisk(localFile, packetCandidate);
+    if (insidePacket || aliasesDeclaredFile) {
+      die(
+        `--expected-protocol local file "${localFile}" must not be the packet's own file, or a symlink/hard-link ` +
+        `alias of it (declared path "${declaredPath}" inside --packet ${packetDir}); the external expectation must ` +
+        `come from somewhere the packet under test does not control`,
+      );
+    }
     const sha256 = createHash("sha256").update(readFileSync(localFile)).digest("hex");
     if (pin.has(declaredPath)) die(`--expected-protocol declared path "${declaredPath}" given more than once`);
     pin.set(declaredPath, sha256);
@@ -437,9 +495,10 @@ function readExpectedProtocol(args: Args): ExternalProtocolPin {
 function cmdValidatePacket(args: Args): number {
   const packetDir = str(args, "packet");
   if (!packetDir) die("--packet is required (a directory containing packet.json)");
+  const resolvedPacketDir = resolve(packetDir);
   const exposure = readExposureCheck(str(args, "exposure-log"));
-  const externalProtocol = readExpectedProtocol(args);
-  const result = validatePacket(resolve(packetDir), exposure, externalProtocol);
+  const externalProtocol = readExpectedProtocol(args, resolvedPacketDir);
+  const result = validatePacket(resolvedPacketDir, exposure, externalProtocol);
   if (result.ok) {
     console.log(`PASS  case ${result.case_id}`);
     console.log(`  subject_hash: ${result.subject_hash}`);
