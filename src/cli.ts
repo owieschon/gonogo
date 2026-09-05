@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertKnownFlags, parseArgs, str } from "./args.ts";
@@ -11,7 +12,7 @@ import { runEval } from "./eval.ts";
 import { runCalibrate } from "./calibrate.ts";
 import { serializeCacheEntry } from "./replay.ts";
 import { makeBackend } from "./judges/index.ts";
-import { validatePacket } from "./packet.ts";
+import { validatePacket, type ExposureCheck, type ExternalProtocolPin } from "./packet.ts";
 import {
   EVENT_SCHEMA_VERSION,
   appendEvent,
@@ -54,9 +55,11 @@ const USAGE = `gonogo ${GONOGO_VERSION} — independent verdicts on completed ag
   gonogo outcome --task <id> --pr <url> --state merged|closed|abandoned
                  [--run <run_id>] [--merged-at <iso8601>]
 
-  gonogo validate-packet --packet <dir> [--exposure-log <file>]
+  gonogo validate-packet --packet <dir> --expected-protocol <declaredPath>=<localFile>
+                 [--expected-protocol ... (repeatable)] [--exposure-log <file>]
                  checks a versioned evaluation packet's declared identity
-                 against actual bytes before any reviewer sees it. Offline,
+                 against actual bytes and against an externally pinned
+                 protocol reference before any reviewer sees it. Offline,
                  read-only, no judge calls. See METHODS.md section 3.
 
 Flags:
@@ -84,7 +87,7 @@ Exit codes: 0 go or go-with-notes, 1 hold or no-go, 2 inconclusive, 3 tool error
 `;
 
 const BOOLEAN_FLAGS = new Set(["record", "replay", "quiet", "markdown"]);
-const MULTI_FLAGS = new Set(["dir"]);
+const MULTI_FLAGS = new Set(["dir", "expected-protocol"]);
 const COMMAND_FLAGS: Record<string, ReadonlySet<string>> = {
   judge: new Set([
     "spec", "repo", "base", "transcript", "test-cmd", "judge", "task", "workspace",
@@ -93,7 +96,7 @@ const COMMAND_FLAGS: Record<string, ReadonlySet<string>> = {
   eval: new Set(["k", "replay", "record", "only", "judge", "markdown", "events"]),
   calibrate: new Set(["dir", "repo", "events"]),
   outcome: new Set(["task", "pr", "state", "run", "merged-at", "events"]),
-  "validate-packet": new Set(["packet", "exposure-log"]),
+  "validate-packet": new Set(["packet", "exposure-log", "expected-protocol"]),
   help: new Set(),
   "--help": new Set(),
   "-h": new Set(),
@@ -388,9 +391,14 @@ function cmdOutcome(args: Args): number {
   return EXIT.go;
 }
 
-/** Reads the caller's own exposure log; never discovered, never written here. */
-function readExposureLog(path: string | undefined): ReadonlySet<string> {
-  if (path === undefined) return new Set();
+/**
+ * Reads the caller's own exposure log; never discovered, never written here.
+ * Omitting `--exposure-log` means "no record supplied", not "empty record" —
+ * only the latter can back an "untouched" declaration, so the two must stay
+ * distinguishable all the way into `validatePacket`.
+ */
+function readExposureCheck(path: string | undefined): ExposureCheck {
+  if (path === undefined) return { supplied: false };
   if (!existsSync(path)) die(`--exposure-log ${path} does not exist`);
   let parsed: unknown;
   try {
@@ -401,14 +409,37 @@ function readExposureLog(path: string | undefined): ReadonlySet<string> {
   if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === "string")) {
     die(`--exposure-log ${path} must be a JSON array of case_id strings`);
   }
-  return new Set(parsed as string[]);
+  return { supplied: true, exposedCaseIds: new Set(parsed as string[]) };
+}
+
+/**
+ * Builds the external protocol pin from `--expected-protocol <declaredPath>=<localFile>`,
+ * hashing each local file ourselves — a trusted reference outside the packet,
+ * never the packet's own declared digest of itself.
+ */
+function readExpectedProtocol(args: Args): ExternalProtocolPin {
+  const raw = args["expected-protocol"];
+  const entries = raw === undefined ? [] : Array.isArray(raw) ? raw : [String(raw)];
+  const pin = new Map<string, string>();
+  for (const entry of entries) {
+    const eq = entry.indexOf("=");
+    if (eq <= 0) die(`--expected-protocol must be <declaredPath>=<localFile>, got "${entry}"`);
+    const declaredPath = entry.slice(0, eq);
+    const localFile = entry.slice(eq + 1);
+    if (!existsSync(localFile)) die(`--expected-protocol local file "${localFile}" does not exist`);
+    const sha256 = createHash("sha256").update(readFileSync(localFile)).digest("hex");
+    if (pin.has(declaredPath)) die(`--expected-protocol declared path "${declaredPath}" given more than once`);
+    pin.set(declaredPath, sha256);
+  }
+  return pin;
 }
 
 function cmdValidatePacket(args: Args): number {
   const packetDir = str(args, "packet");
   if (!packetDir) die("--packet is required (a directory containing packet.json)");
-  const exposed = readExposureLog(str(args, "exposure-log"));
-  const result = validatePacket(resolve(packetDir), exposed);
+  const exposure = readExposureCheck(str(args, "exposure-log"));
+  const externalProtocol = readExpectedProtocol(args);
+  const result = validatePacket(resolve(packetDir), exposure, externalProtocol);
   if (result.ok) {
     console.log(`PASS  case ${result.case_id}`);
     console.log(`  subject_hash: ${result.subject_hash}`);
