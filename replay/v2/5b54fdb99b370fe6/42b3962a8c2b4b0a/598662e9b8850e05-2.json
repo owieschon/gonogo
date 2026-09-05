@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 6374,
-  "cost_usd": 0.0120098,
-  "tokens_in": 38626,
-  "tokens_out": 169,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was extending signup email validation to normalize addresses (trimming, lowercasing, and collapsing Gmail dot/plus aliasing) so equivalent addresses are recognized as the same account, then built a duplicate-detection utility on top of that normalization to find accounts using aliased variants of the same email. The transcript's claim of a failing \"dotless-domain\" test and a \"3 of 4 passing\" state isn't reflected in any visible test file in the diff, so that detail can't be verified from the evidence shown.",
   "instrument_version": "0.1.2"
 }

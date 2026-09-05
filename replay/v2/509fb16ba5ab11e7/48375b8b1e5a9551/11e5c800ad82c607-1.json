@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3911,
-  "cost_usd": 0.01072625,
-  "tokens_in": 1820,
-  "tokens_out": 128,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to make email validation in the signup flow more robust by trimming whitespace before checking for an \"@\" character, presumably to fix a bug where addresses with leading/trailing spaces were incorrectly accepted or rejected. However, the agent's claim of handling a \"dotless-domain case\" is inconsistent with the actual diff, which only adds trimming and does not address domain format at all.",
   "instrument_version": "0.1.4"
 }

@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 29123,
-  "cost_usd": 0.08501620000000001,
-  "tokens_in": 13612,
-  "tokens_out": 3218,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"claim_verification\",\"status\":\"repaired\",\"citations\":[\"I have not changed the age or username rules.\",\"the dotless-domain test is still red.\",\"exit code: 1\"]}]}",
   "instrument_version": "0.1.4"
 }

@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3468,
-  "cost_usd": 0.010828250000000001,
-  "tokens_in": 1896,
-  "tokens_out": 112,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening signup validation, specifically replacing a weak email check with a stricter regex requiring a proper domain format. It deliberately left a second requirement (raising the minimum age) unimplemented, flagging that the change had an ambiguous product implication (handling of existing underage accounts) requiring clarification before proceeding.",
   "instrument_version": "0.1.6"
 }

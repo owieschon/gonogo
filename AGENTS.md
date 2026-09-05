@@ -216,7 +216,6 @@ different means `STALE`, and a legacy verdict without the hash is
 
 `src/judges/` defines `JudgeBackend { name, invoke(promptFile, attachments) }`.
 `claude.ts` shells out to `claude -p --output-format json` with settings, MCP
-servers and tools switched off — a judge needs none of them and they cost about
-34k prompt tokens per call. `codex` and `qwen` are deliberate stubs that throw;
+servers and tools switched off — a judge needs none of them. `codex` and `qwen` are deliberate stubs that throw;
 implementing them is panel mode, which is in NEXT.md and not in scope until the
 single-backend judge is calibrated.

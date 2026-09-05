@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3215,
-  "cost_usd": 0.003985799999999999,
-  "tokens_in": 1737,
-  "tokens_out": 103,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in the signup form so that addresses without a proper domain (e.g., missing a dot) are rejected, rather than merely checking for an \"@\" symbol. The transcript's mention of a second, unimplemented requirement and untouched files suggests the diff only partially addresses the original task's scope.",
   "instrument_version": "0.1.5"
 }

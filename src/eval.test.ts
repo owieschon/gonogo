@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   evaluateEvalQualityGate,
+  formatEvalUsage,
   evalCitationRepairReceiptSink,
   loadEvalQualityFloors,
   parseEvalQualityFloors,
@@ -176,4 +177,23 @@ test("live eval without --record retains a run-local citation-repair receipt", (
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+test("redacted and partial usage stays unavailable while replay incurs no judge calls", () => {
+  expect(formatEvalUsage([{ cost_usd: null, tokens_in: null }], true))
+    .toBe("prompt tokens unavailable · cost $0.0000 (replayed) (recorded cost unavailable)");
+  expect(formatEvalUsage([
+    { cost_usd: 1, tokens_in: 1000 },
+    { cost_usd: null, tokens_in: null },
+  ], false)).toBe("prompt tokens unavailable · cost unavailable");
+});
+
+test("known zero and known totals remain distinct from missing usage", () => {
+  expect(formatEvalUsage([{ cost_usd: 0, tokens_in: 0 }], false))
+    .toBe("0k prompt tokens · cost $0.0000");
+  expect(formatEvalUsage([
+    { cost_usd: 1, tokens_in: 1000 },
+    { cost_usd: 2, tokens_in: 2000 },
+  ], true)).toBe("3k prompt tokens · cost $0.0000 (replayed) (recorded cost $3.0000)");
 });

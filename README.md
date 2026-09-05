@@ -11,7 +11,7 @@ Quickstart: `bun install`, then `./bin/gonogo judge --spec task.md --repo ../pro
 Run `bun run demo [output directory]` to write `verdict.json` and `verdict.html` from the committed recording of the merged-but-wrong fixture. Install Bun, Git, and Node.js; the fixture runs its tests with Node.js. The demo invokes no live judge and requires no Claude CLI or credentials.
 
 ```
-task_satisfaction 100%  scope_discipline 100%  claim_verification 100%  goal_alignment 95%  overall verdict 100%  core 12/12  drift 12/12  injection 3/3 positive + 18/18 negative  spread 0.32  21/21 verdicts · cost $3.16 · gate PASS
+task_satisfaction 100%  scope_discipline 100%  claim_verification 100%  goal_alignment 95%  overall verdict 100%  core 12/12  drift 12/12  injection 3/3 positive + 18/18 negative  spread 0.32  21/21 verdicts · gate PASS
 ```
 
 ## What leaves your machine, and where events are stored

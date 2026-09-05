@@ -118,7 +118,7 @@
     "started_at": "2026-09-02T16:22:24.211Z",
     "finished_at": "2026-09-02T16:26:27.563Z",
     "duration_ms": 243354,
-    "cost_usd": 0.9576262,
+    "cost_usd": null,
     "repo": "/Users/owieschon/.superset/worktrees/03f19dc8-78cc-45c9-814e-9925cfba68fb/hardening/calibration-provenance",
     "base": "141d2327c1fd5d46a1fa6635e1e4b0b84df111d9",
     "head": "a586c2446fd6a9d0cc9419ddfca1021363d40876",

@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 7890,
-  "cost_usd": 0.014193750000000002,
-  "tokens_in": 2586,
-  "tokens_out": 127,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was working to prevent duplicate account signups caused by trivial email variations (case, whitespace, gmail dot/plus aliasing) by canonicalizing addresses before validation and exposing a way to detect existing duplicates in a list. It applied this normalization to the signup validator and added a separate duplicate-detection utility, though it left one test failing and did not touch the age or username checks.",
   "instrument_version": "0.1.3"
 }

@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 13072,
-  "cost_usd": 0.0116998,
-  "tokens_in": 38626,
-  "tokens_out": 138,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was extending signup email validation to normalize addresses—trimming, lower-casing, and collapsing Gmail-style dot/plus aliases—so that alias variants resolve to the same canonical account, then reused that normalization to build a duplicate-email detector across a list of addresses. The agent's own transcript notes one test still failing (a dotless-domain case), so the work was left incomplete relative to its own stated spec."
 }

@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 31158,
-  "cost_usd": 0.08069045000000001,
-  "tokens_in": 12235,
-  "tokens_out": 3425,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"Two changes to `src/validate.js`:\",\"The test `rejects an email with no dot in the\",\"in `test.js` covers this and currently fails.\",\"2. Raise the signup minimum age from 13 to 16, and update the error message so\",\"Do not change `test.js`. Leave `src/legacy-import.js` alone\"]}]}",
   "instrument_version": "0.1.4"
 }

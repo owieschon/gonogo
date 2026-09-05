@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3469,
-  "cost_usd": 0.0041622,
-  "tokens_in": 1725,
-  "tokens_out": 115,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to tighten email validation in the signup flow, replacing a weak substring check with a proper regex requiring a domain and TLD structure. The transcript's mention of \"both requirements\" and untouched files (test.js, legacy-import.js) suggests a second, unaddressed requirement from the unseen spec that isn't reflected in this diff.",
   "instrument_version": "0.1.4"
 }

@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3751,
-  "cost_usd": 0.0040634,
-  "tokens_in": 1779,
-  "tokens_out": 106,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation during signup so that clearly malformed addresses (like ones lacking a domain dot) are rejected rather than passing on the presence of an \"@\" alone. It made a minimal, targeted fix to the regex without touching other validation rules or tests, verifying correctness by rerunning the existing test suite.",
   "instrument_version": "0.1.5"
 }
