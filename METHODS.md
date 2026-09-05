@@ -118,12 +118,17 @@ other, and results from one are never reported as the other.
 
 **Executable check, not a study.** `gonogo validate-packet` (`src/packet.ts`)
 is an offline, read-only integrity and eligibility gate. It checks that a
-packet's declared identity matches its actual bytes, that comparison arms
-review the same underlying evidence, and that exposed cases cannot claim
-untouched-holdout status. It is not a detector of arbitrary semantic leakage
-in free text, and a pass from it is not a claim that a real study has been
-frozen. This unit ships the checker and its tests; it selects no holdout,
-downloads no source, and calls no judge or model panel.
+packet's declared identity matches its actual bytes against an externally
+supplied expectation (never only the packet's own say-so about itself), that
+every comparison arm's declared review material references the exact same
+evidence bytes, and that exposed or unverifiable cases cannot claim
+untouched-holdout status. It verifies the declared references and the bytes
+behind them — not that a reviewer actually opened, read, or obeyed any of
+it; a passing packet says the *material was assembled correctly*, not that a
+review happened. It is not a detector of arbitrary semantic leakage in free
+text, and a pass from it is not a claim that a real study has been frozen.
+This unit ships the checker and its tests; it selects no holdout, downloads
+no source, and calls no judge or model panel.
 
 ### Packet identity
 
@@ -134,82 +139,164 @@ A packet (`packet.json` plus the files it references) declares:
 - `case_id` — required; a packet with no identity cannot be scored against
   anything.
 - `provenance: known|unknown` — `unknown` fails closed. A case whose origin
-  cannot be stated is not evidence of anything.
+  cannot be stated is not evidence of anything. This is an operator
+  attestation, not proof: the checker cannot verify that a claimed origin is
+  true, only that one was declared.
 - `exposure: untouched|development|unknown` — `unknown` fails closed.
   `untouched` is checked against the operator's own exposure log (case ids
-  already seen during development); a hit there fails closed even though the
-  packet claims `untouched`. A `development` case can still pass every other
-  check — it stays usable as a labeled development case — but it is never
-  holdout-eligible. The exposure log itself is supplied by the caller and is
-  never discovered or written by the validator.
+  already seen during development, e.g. cases discussed, opened, or
+  otherwise looked at before this contract existed); a hit there fails
+  closed even though the packet claims `untouched`. Critically, **omitting
+  the exposure log is not the same as supplying an empty one** — a caller
+  who supplies no record at all gets `exposure_record_not_supplied`, never a
+  silent pass, because "nobody checked" and "checked and found nothing" are
+  different claims and only the second can back an `untouched` decision. A
+  `development` case can still pass every other check — it stays usable as a
+  labeled development case — but it is never holdout-eligible.
+- `data_cutoff` — a real calendar date (`YYYY-MM-DD`, validated against the
+  calendar, not merely pattern-matched) marking the declared boundary past
+  which no material may enter what a reviewer sees.
+- `evidence` — the one shared evidence collection every arm's declared review material must reference:
+  - `payload_file` — a single file, declared with a path, sha256 and role
+    (`review`), checked against actual bytes on disk. Its parsed content
+    must have the exact shape the rest of this repo hashes evidence as
+    (`spec`/`diff`/`commitMessages` strings, `transcript` null-or-string,
+    `test` null or `{command, exitCode, output}`) — a malformed payload is a
+    named refusal, never a crash.
+  - `subject_hash` — the model-independent identity of `payload_file`'s
+    content (the same `subjectHashOf` used everywhere else in this repo),
+    recomputed and checked, never trusted from the manifest alone.
+  - `source` — `repo`, `base`, `head`: attested source identity. `base` and
+    `head` must be full, unabbreviated 40-character commit hashes — a
+    prefix is not an identity, since two different commits can share one.
+  - `artifact_provenance` — per material (`spec`, `diff`, `commit_messages`,
+    `transcript`, `test`), one of `original`, `missing`, or `reconstructed`.
+    An artifact that is honestly `missing` does not disqualify a case; one
+    marked `reconstructed` is never eligible for untouched holdout, because
+    reconstructed material is not the original evidence a genuine untouched
+    case needs to rest on.
 - `protocol_files`, `instrument_files` — the frozen protocol document(s) and
-  judge instrument/prompt files, each declared with a path and sha256 checked
-  against the actual bytes on disk, not against a nonempty string.
-- `arms` — one or more review arms (e.g. `gonogo`, `one_pass`). Each arm
-  declares a `subject_hash` (the model-independent identity of its raw,
-  pre-elision evidence — the same `subjectHashOf` used everywhere else in
-  this repo) and an `evidence_hash` (the identity of exactly what bytes a
-  reviewer is shown for that arm). These are never treated as
-  interchangeable: two arms of one case must share the same `subject_hash`
-  — the same underlying evidence — even when their `evidence_hash` differs
-  because they render it differently. Arms whose `subject_hash` differs are
-  a different case, not a paired comparison, and fail closed.
+  judge instrument/prompt files. Each is checked two ways: against actual
+  bytes on disk (not a nonempty string), and — for `protocol_files` only —
+  against an **externally supplied pin** the caller computed independently
+  of the packet (e.g. from their own trusted copy of this file), keyed by
+  declared path. A packet cannot pass by only matching its own manifest's
+  digest of itself; the CLI requires at least one `--expected-protocol
+  <declaredPath>=<localTrustedFile>` and every declared protocol file must
+  match a pin, not merely be internally self-consistent.
+- `arms` — one or more review arms (e.g. `gonogo`, `one_pass`). Each arm's
+  declared `review_files` must equal, byte for byte, exactly
+  `[evidence.payload_file]` — the same file `subject_hash` was computed
+  from, not a second file that merely claims to represent it. This makes
+  "the arms declare different review material," or "an arm's declared
+  material is something other than what subject_hash covers," a structural
+  refusal (`arm_evidence_mismatch`) rather than a gap left open by
+  independently-declared, unlinked hashes — and it holds regardless of
+  whether a reviewer ever actually opens the file. Arm-specific framing
+  goes in a separate, optional `instructions_files` list — never in
+  `review_files` — and both lists are scanned for `forbidden_markers` and
+  checked against file roles.
+- Every file everywhere (`protocol_files`, `instrument_files`,
+  `review_files`, `instructions_files`) declares a `role`. `answer`,
+  `outcome` and `post_cutoff` are real roles a packet can use elsewhere, but
+  they may **never** appear in `review_files` or `instructions_files` — that
+  is a structural refusal (`forbidden_review_material`), independent of
+  whatever `forbidden_markers` does or does not name. A caller-chosen marker
+  list that happens to be empty is not, by itself, a guarantee that answer
+  or outcome material stays out; the role check is what actually enforces
+  that boundary.
 - `forbidden_markers` — exact strings that must not appear in any arm's
-  review-facing files, e.g. a literal answer key or outcome marker. This is
-  a named-marker check, not a semantic scan.
+  review-facing or instruction files. This is a named-marker check, not a
+  semantic scan; every entry must be a string, and a non-string entry is
+  refused rather than silently dropped from the check.
+- Every declared path is resolved and checked to stay inside the packet
+  directory — a `..` escape, an absolute path, or a symlink whose real
+  target is outside the packet is refused (`unsafe_path`) rather than
+  followed.
 
 Every named failure carries one of a fixed set of reasons
 (`DISQUALIFY_REASON` in `src/packet.ts`): `malformed_metadata`,
-`missing_identity`, `protocol_digest_mismatch`, `payload_digest_mismatch`,
-`arm_evidence_mismatch`, `unknown_provenance`, `unknown_exposure_state`,
-`forbidden_review_material`, `exposed_case_claims_untouched`. A packet with
-any failure never passes; there is no partial credit.
+`missing_identity`, `unsafe_path`, `protocol_digest_mismatch`,
+`payload_digest_mismatch`, `unknown_provenance`, `unknown_exposure_state`,
+`forbidden_review_material`, `exposed_case_claims_untouched`,
+`exposure_record_not_supplied`, `arm_evidence_mismatch`. A packet with any
+failure never passes; there is no partial credit.
 
 ### Contamination and other limits this check cannot close
 
 Model pretraining contamination cannot be disproved by a manifest: a case
 built from public material may already be inside a judge model's training
-data regardless of what the packet declares, and no digest check can detect
-that. Passing packet validation is a statement about packaging integrity —
-declared identity matches actual bytes, arms match, exposure is declared and
-checked against a log — not a statement that a case is free of contamination,
-free of semantic leakage in free text, or otherwise a clean scientific
-instrument.
+data regardless of what the packet declares, and no digest, role, or path
+check can detect that. `provenance`, `source` and `artifact_provenance` are
+operator attestations: the checker validates only that each declared value
+has the required shape (e.g. `artifact_provenance` fields are one of
+`original`/`missing`/`reconstructed`, `source.base`/`head` are full commit
+hashes) — it does not and cannot verify that a declared value is true.
+Passing packet validation is a statement about packaging integrity —
+declared identity matches an external expectation, every arm's declared
+review material references identical bytes, exposure was checked against a
+supplied record, disallowed material roles are structurally absent — not a
+statement that a case is free of contamination, free of semantic leakage in free text
+hidden inside otherwise-legitimate review material, or otherwise a clean
+scientific instrument.
 
 ### What a future frozen study must still add
 
 This unit defines the contract and ships the checker; it does not freeze a
-real study. Before any accuracy claim is made from packets validated this
-way, a concrete, reviewed manifest must additionally state:
+real study, select a real holdout, or run any real judgment. Before any
+accuracy claim is made from packets validated this way, a concrete, reviewed
+manifest must additionally state, with no real cases, selection, or
+judgments made yet:
 
-- **Selection and exclusion rules**, predeclared before case access —
-  including a small human-review pilot with fixed stopping rules, agreed
-  before the pilot sees its first case.
-- **Denominators.** False-go: consequential errors GoNoGo missed, divided by
-  consequential errors present. False-alarm: cases GoNoGo flagged that
-  one-pass review and adjudication agree were not consequential errors,
-  divided by cases flagged. Coverage: cases where both arms produced a usable
-  verdict, divided by cases attempted. None of these are computed by the
-  validator; they are computed later, over a frozen sample, and reported with
-  the sample size that supports them — not asserted at a precision the sample
-  cannot carry.
+- **Selection, exclusion and stopping defaults, predeclared before case
+  access.** A concrete small feasibility-pilot default (not yet exercised,
+  and not itself a claim that a study is frozen): draw only from cases
+  already labeled `development` or from synthetic fixtures — never from an
+  untouched holdout — target on the order of 8-12 cases, exclude any case
+  whose `source.base`/`source.head` do not resolve in an available
+  repository, and stop at whichever comes first of (a) the target count, or
+  (b) two consecutive adjudication reversals, with the pilot reviewed before
+  any extension. These defaults are a starting point for a real design
+  review, not the design itself.
+- **Denominators, kept distinct and never inferred from one another.**
+  *Error miss rate* — consequential errors GoNoGo failed to flag, divided by
+  cases an independent adjudicator later confirms did contain a
+  consequential error (the adjudicated-error population). *Unsafe-approval
+  fraction* — among cases GoNoGo approved (a "go"-shaped verdict), the
+  fraction an adjudicator later confirms should not have been approved.
+  *False-positive rate* — among cases an independent adjudicator confirms
+  were acceptable, the fraction GoNoGo flagged as a problem. The adjudicated
+  reference for every one of these is independent judgment on additional
+  evidence; **it is never defined as, or required to agree with, what the
+  one-pass baseline reviewer said** — a baseline-agreement requirement would
+  make the baseline the ground truth it is supposed to be compared against.
+  *Coverage* — cases where every arm produced a usable verdict, divided by
+  cases attempted, with abstentions and tool errors reported as their own
+  outcomes, not silently folded into either "pass" or "fail." None of these
+  are computed by the validator; they are computed later, over a frozen
+  sample, and reported with the sample size that supports them — not
+  asserted at a precision the sample cannot carry. Unresolved labels stay
+  unresolved rather than being defaulted into either denominator.
 - **Paired one-pass comparison**, arm-for-arm on identical evidence (the
-  `arm_evidence_mismatch` check exists so this pairing cannot silently drift),
-  and **human review time** per case, recorded alongside the verdict.
+  `arm_evidence_mismatch` check exists so this pairing cannot silently
+  drift), and **human review time** per case, recorded alongside the
+  verdict.
 - **Human pre-model judgment kept separate from later adjudication.** A
   reviewer's first read, before seeing any model output, is a different
   record from an adjudicated verdict informed by additional evidence
-  afterward; the two are never merged into one number. Disagreement,
-  abstention and tool error are preserved as outcomes, not discarded or
-  folded into agreement.
+  afterward; the two are never merged into one number, and the adjudicated
+  verdict is never backdated to stand in for the reviewer's original,
+  pre-model judgment.
 - Consistent with the rest of this document: a merged PR, a passing test
-  suite, model-family agreement, or one operator's labels are not correctness,
-  and a pilot is feasibility evidence for running the study, not authorization
-  to merge on its results.
+  suite, model-family agreement, or one operator's labels are not
+  correctness, and a pilot is feasibility evidence for running the study,
+  not authorization to merge on its results.
 
-Original missing specs or transcripts are marked missing in the packet, never
-reconstructed and presented as original — a reconstructed artifact answers a
-different question than the one this protocol asks.
+Original missing specs or transcripts are marked `missing` in
+`artifact_provenance`, never reconstructed and presented as `original` — a
+reconstructed artifact answers a different question than the one this
+protocol asks, which is why `reconstructed` disqualifies untouched-holdout
+eligibility even when every digest check passes.
 
 ### What the numbers do not establish
 

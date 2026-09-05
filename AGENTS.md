@@ -24,9 +24,12 @@ tool, not its operator.
     bun test                          # invariant tests; must pass before you push
     ./bin/gonogo calibrate --repo <p> # judge-vs-human agreement for target repo
     ./scripts/self-judge.sh --spec SPEC.md             # judge this repo's own diff
-    ./bin/gonogo validate-packet --packet <dir> [--exposure-log <file>]
+    ./bin/gonogo validate-packet --packet <dir> \
+        --expected-protocol <declaredPath>=<localTrustedFile> [--exposure-log <file>]
                                        # offline evaluation-packet integrity/eligibility
-                                       # check; see METHODS.md section 3
+                                       # check; see METHODS.md section 3. Omitting
+                                       # --exposure-log fails closed on an "untouched"
+                                       # packet rather than defaulting to a clean pass.
 
 `bun` is required for every run; the `claude` CLI is required only for a live
 one. `--replay` needs neither the `claude` CLI nor judge credentials, which is
