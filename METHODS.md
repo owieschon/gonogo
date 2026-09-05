@@ -298,66 +298,36 @@ accuracy claim is made from packets validated this way, a concrete, reviewed
 manifest must additionally state, with no real cases, selection, or
 judgments made yet:
 
-- **Selection, exclusion and stopping rule, predeclared before case access.**
-  A concrete small feasibility-pilot default (not yet exercised, not yet
-  backed by any actual inventory, and not itself a claim that a study is
-  frozen or run):
-  - **Target:** exactly 10 cases. Not a range — a range leaves the actual
-    stopping point to be chosen after seeing results, which is what a
-    predeclared rule exists to prevent.
-  - **Frozen eligible population, named before the draw, not "as of run
-    date."** Eligibility is not "every development-labeled thing that exists
-    when someone gets around to running this" — that population can grow
-    after a draw already happened, which makes the draw irreproducible. The
-    actual rule: before drawing, someone builds an **inventory manifest** —
-    a plain list of `case_id` values — and pins its own file digest (the
-    same external-pin pattern this contract already uses for protocol
-    identity: a sha256 computed by whoever runs the pilot, recorded in the
-    pilot record, checked against the manifest file's actual bytes). The
-    draw runs against that frozen manifest, never against a live scan of the
-    repository at draw time. Building that inventory is exactly the "no
-    inventory creation... now" this document is not doing yet.
-  - **What is eligible for that inventory:** a `case_id` may be listed only
-    if it names an actual evaluation-packet case — a directory containing a
-    `packet.json` that validates under `gonogo validate-packet` (schema
-    `gonogo/eval-packet@2`) with `exposure` declared `"development"`, or a
-    `packet.json` deliberately constructed as synthetic fixture data for
-    this pilot. This is **not** "every file under `calibration/synthetic/`"
-    — that directory holds synthetic *manual ratings* (`gonogo/human@1`
-    files), which are not evaluation-packet cases and satisfy no part of
-    this contract; a rating file is not a unit this pilot can draw.
-  - **Deterministic draw and order:** sort the frozen inventory's `case_id`
-    values by byte order (plain string sort, no randomness, no operator
-    discretion) and take the first 10 in that order.
-  - **Exact exclusions, applied to the sorted list in order, each one
-    skipped without being replaced:** a listed `case_id` is dropped — and
-    the draw continues to the next id in sorted order, still aiming for
-    10 — if its `packet.json` fails `gonogo validate-packet`; its
-    `provenance` is not `known`; its `evidence.source.base`/`.head` do not
-    resolve as commits in an available copy of the named repository; or its
-    `subject_hash` duplicates a case already accepted earlier in this same
-    draw (ties broken by sort order: the earlier `case_id` is kept, the
-    later one is the duplicate and is excluded, not the reverse).
-  - **Terminal exhaustion, made explicit:** if the sorted inventory (after
-    exclusions) contains fewer than 10 eligible cases, the draw stops when
-    it runs out — it does not wait for a count that cannot be reached. The
-    pilot then proceeds on however many were actually accepted, and both the
-    shortfall and every excluded `case_id` with its specific exclusion
-    reason are reported alongside the results; nothing is padded or
-    silently treated as if 10 had been reached.
-  - **Adjudication reversal, defined:** a reversal is one case where the
-    independent adjudicator's final verdict differs from the human reviewer's
-    recorded pre-model verdict for that same case (see below for why the
-    adjudicated reference is never compared to GoNoGo's own verdict here —
-    a reversal is about the human record, not about GoNoGo).
-  - **Stopping rule:** stop at whichever comes first — 10 accepted cases
-    reviewed and adjudicated, 2 reversals as defined above, or the frozen,
-    exclusion-filtered inventory running out before reaching 10 (terminal
-    exhaustion, above) — and review the pilot's results before drawing
-    against any later, newly-frozen inventory.
-  This is a predeclared default awaiting a real design review, not a study
-  result: no inventory has been built, no case has been drawn, reviewed, or
-  adjudicated under it, and none is drawn or accessed by writing this rule.
+- **Feasibility-pilot default.** This rule is for a later reviewed
+  inventory; no inventory or pilot is created by this change.
+  1. Before selecting or reviewing pilot cases, freeze an inventory of
+     unique case IDs, packet locations and packet-manifest SHA-256 digests.
+     Record the inventory digest and protocol digest in the pilot record.
+     Eligible candidates are evaluation packets declared development
+     material or explicitly constructed synthetic evaluation packets.
+     Synthetic rating files alone are not candidates.
+  2. Sort inventory IDs by UTF-8 byte order and select the first 10, or all
+     IDs if fewer exist. Keep that draw fixed. Exclude a selected case if
+     its frozen manifest or declared file digests do not match, packet
+     validation fails, provenance is unknown, source base/head cannot be
+     resolved in the named repository, or its subject hash duplicates an
+     earlier valid selected case. Keep the earlier ID for duplicates. Record
+     every exclusion; do not replace excluded cases with later IDs.
+  3. Review the remaining selected cases in that order. Preserve each
+     human's pre-model acceptability label separately from later
+     independent adjudication. A reversal occurs only when both labels are
+     resolved and the final adjudicated acceptability label differs from
+     the initial human label. Unresolved labels, abstentions and tool
+     errors remain separate outcomes and are not counted as reversals.
+  4. Stop after the second reversal or after every remaining selected case
+     has been processed, whichever occurs first. An empty or exhausted draw
+     is terminal. Report the draw size, exclusions, cases processed,
+     unresolved outcomes, stopping reason and shortfall from 10. Review
+     this feasibility result before freezing another inventory.
+
+  This pilot measures feasibility of the comparison procedure, not
+  permission for autonomous merging — see the denominator and
+  paired-comparison requirements above.
 - **Denominators, kept distinct and never inferred from one another.**
   *Error miss rate* — consequential errors GoNoGo failed to flag, divided by
   cases an independent adjudicator later confirms did contain a
