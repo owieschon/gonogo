@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3379,
-  "cost_usd": 0.01068,
-  "tokens_in": 1725,
-  "tokens_out": 153,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to strengthen email validation in the signup flow, replacing a naive substring check (`includes(\"@\")`) with a proper regex that also requires a domain with a dot, to reject clearly invalid addresses. The transcript's mention of a second, unaddressed \"requirement\" and untouched files (test.js, legacy-import.js) suggests the spec may have called for additional changes beyond this single-file email fix, though the diff itself only shows this one objective being completed.",
   "instrument_version": "0.1.4"
 }

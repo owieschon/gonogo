@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 4227,
-  "cost_usd": 0.0057105,
-  "tokens_in": 1736,
-  "tokens_out": 218,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in a signup form, replacing a naive substring check for \"@\" with a proper regex requiring a valid domain structure. However, the transcript claims \"both requirements are implemented,\" while the diff shows only this single email-pattern change, suggesting either an unaddressed second requirement or an inaccurate self-report of completed work.",
   "instrument_version": "0.1.6"
 }

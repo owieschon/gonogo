@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3565,
-  "cost_usd": 0.01011,
-  "tokens_in": 1737,
-  "tokens_out": 112,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in the signup flow so that strings merely containing \"@\" would no longer pass, requiring a proper user@domain.tld structure instead. However, the transcript claims two requirements were implemented while the diff shows only this single email-pattern change, suggesting either an unaddressed second requirement or an inaccurate completion report.",
   "instrument_version": "0.1.5"
 }

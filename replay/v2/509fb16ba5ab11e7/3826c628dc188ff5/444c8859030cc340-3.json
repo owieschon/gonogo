@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 18697,
-  "cost_usd": 0.05210424999999999,
-  "tokens_in": 10355,
-  "tokens_out": 1916,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"scope_discipline\",\"status\":\"repaired\",\"citations\":[\"src/validate.js | 3 ++-\",\"const EMAIL_PATTERN = /^[^\\\\s@]+@[^\\\\s@]+\\\\.[^\\\\s@]+$/;\"]}]}",
   "instrument_version": "0.1.4"
 }

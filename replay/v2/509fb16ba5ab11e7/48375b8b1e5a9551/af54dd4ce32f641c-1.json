@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 2977,
-  "cost_usd": 0.0100025,
-  "tokens_in": 1767,
-  "tokens_out": 96,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in a signup form so that addresses lacking a proper dotted domain (e.g., \"ada@localhost\") would be rejected rather than passing on a simple \"@\" check. The change was scoped narrowly to fix this validation gap while leaving age and username rules untouched.",
   "instrument_version": "0.1.4"
 }

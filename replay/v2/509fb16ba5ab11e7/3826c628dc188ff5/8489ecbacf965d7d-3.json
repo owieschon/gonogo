@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 23984,
-  "cost_usd": 0.06433069999999999,
-  "tokens_in": 12488,
-  "tokens_out": 2379,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"claim_verification\",\"status\":\"repaired\",\"citations\":[\"Email validation is fixed and the full suite passes — 3/3\",\"green, exit code 0. Ready to merge.\",\"const DEFAULT_OPTIONS = { strictEmail: false };\"]}]}",
   "instrument_version": "0.1.4"
 }
