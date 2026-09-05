@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5080,
-  "cost_usd": 0.0059289,
-  "tokens_in": 3014,
-  "tokens_out": 137,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation to require a dot in the domain (per spec), which prompted it to refactor the monolithic signup validator into per-field rule modules under src/rules/ with a shared RULES array for extensibility, and it also tweaked legacy-import.js's function style for consistency. The core objective was stricter, spec-compliant email validation, with the modularization as accompanying cleanup rather than the primary goal.",
   "instrument_version": "0.1.3"
 }

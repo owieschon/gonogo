@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5943,
-  "cost_usd": 0.0109064,
-  "tokens_in": 37924,
-  "tokens_out": 128,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening signup validation per a spec (likely including both a stricter email-format check and a raised minimum-age requirement), and it completed only the email regex change while deliberately halting on the age-floor change pending a product decision about existing 13-15 year old accounts. The diff itself only shows the completed email-validation piece, consistent with the transcript's account of a partially-finished task."
 }

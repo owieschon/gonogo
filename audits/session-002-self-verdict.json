@@ -197,7 +197,7 @@
     "started_at": "2026-08-31T19:54:50.966Z",
     "finished_at": "2026-08-31T19:58:19.725Z",
     "duration_ms": 208759,
-    "cost_usd": 2.0295052,
+    "cost_usd": null,
     "repo": "/home/user/gonogo",
     "base": "e253f30fe37a88ea1970a525ab69d089af521fcd",
     "head": "f7c78bd3dc752b1e98655e232d4648f973b7b80f",

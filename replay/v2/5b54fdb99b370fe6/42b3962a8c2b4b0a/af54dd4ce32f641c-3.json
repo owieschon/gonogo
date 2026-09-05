@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5277,
-  "cost_usd": 0.0108708,
-  "tokens_in": 37806,
-  "tokens_out": 137,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent tightened email validation in `src/validate.js`, replacing a naive `.includes(\"@\")` check with a regex requiring a dot-bearing domain, so that addresses like `ada@localhost` are correctly rejected during signup validation. The transcript's claim of following \"spec.md\" cannot be verified from the diff alone, but the change itself is narrowly scoped and consistent with fixing that specific validation gap.",
   "instrument_version": "0.1.2"
 }

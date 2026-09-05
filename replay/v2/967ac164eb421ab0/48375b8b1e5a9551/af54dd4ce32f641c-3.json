@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 2913,
-  "cost_usd": 0.0039395,
-  "tokens_in": 1766,
-  "tokens_out": 98,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent tightened email validation so that addresses lacking a dot-bearing domain (e.g., missing a TLD) are correctly rejected, rather than passing on any string containing an \"@\". This was aimed at closing a signup-validation gap where malformed emails could slip through, without touching age or username rule.",
   "instrument_version": "0.1.3"
 }

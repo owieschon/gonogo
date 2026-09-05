@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5731,
-  "cost_usd": 0.010702399999999999,
-  "tokens_in": 37764,
-  "tokens_out": 123,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in a signup form so that addresses without a domain dot (e.g. \"user@localhost\") are rejected, replacing the too-permissive `includes(\"@\")` check with a regex pattern. The transcript's claim of \"both requirements implemented\" can't be verified against the diff since only one change is visible, so that part of its self-report should be treated with some skepticism.",
   "instrument_version": "0.1.2"
 }

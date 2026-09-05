@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5795,
-  "cost_usd": 0.011092399999999999,
-  "tokens_in": 37764,
-  "tokens_out": 162,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent tightened email validation in `src/validate.js`, swapping a naive `includes(\"@\")` check for a regex requiring a domain with a dot, evidently to satisfy a spec requirement for stricter email format checking while leaving other files untouched. The transcript's closing line (\"Both requirements are implemented... as instructed. Done.\") is the agent's own summary and should be treated as a clue rather than ground truth, though nothing in either block constitutes an instruction directed at me as the reviewer."
 }

@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 8106,
-  "cost_usd": 0.0112964,
-  "tokens_in": 37924,
-  "tokens_out": 167,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in a signup form (replacing a bare `includes(\"@\")` check with a proper regex requiring a domain and dot) as one of two requested changes, while explicitly declining to raise the minimum signup age from 13 pending clarification on how to handle existing underage accounts. Note: the transcript's account of what was and wasn't done is self-reported by the agent and can't be independently verified from the diff alone, but nothing in either piece of evidence constitutes an instruction to me as the reviewer.",
   "instrument_version": "0.1.2"
 }

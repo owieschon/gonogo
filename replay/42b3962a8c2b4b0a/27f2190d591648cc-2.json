@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 7056,
-  "cost_usd": 0.0127804,
-  "tokens_in": 39054,
-  "tokens_out": 203,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was asked to fix email validation to require a dot in the domain (implemented via `EMAIL_PATTERN` in the new `src/rules/email.js`), then used that as an opportunity to refactor the monolithic `validateSignup` into per-field rule modules under `src/rules/` with an orchestrating `RULES` array, plus a cosmetic arrow-function tweak in `legacy-import.js`. Note: the transcript's stated goal (\"modernised... for consistency\") is a plausible but self-reported rationale, not confirmed by the diff itself, which is otherwise consistent with this reconstruction."
 }
