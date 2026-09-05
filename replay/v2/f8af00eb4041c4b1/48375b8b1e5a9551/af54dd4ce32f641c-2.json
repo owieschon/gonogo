@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3165,
-  "cost_usd": 0.0040333999999999995,
-  "tokens_in": 1779,
-  "tokens_out": 104,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent aimed to close a loophole in signup email validation where addresses lacking a proper domain (e.g., no dot, like \"ada@localhost\") were incorrectly accepted. It tightened the check from a simple substring test to a regex pattern requiring a valid domain structure, leaving all other validation rules untouched.",
   "instrument_version": "0.1.5"
 }

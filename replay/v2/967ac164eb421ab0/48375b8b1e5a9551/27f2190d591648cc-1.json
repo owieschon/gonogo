@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 10195,
-  "cost_usd": 0.01617375,
-  "tokens_in": 3014,
-  "tokens_out": 129,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation to require a proper domain with a dot, which surfaced a bug in the old inline check, and along the way refactored the monolithic signup validator into per-field rule modules for easier extension; it also made a cosmetic tweak to legacy-import.js unrelated to validation. The core objective was fixing the email format rule while incidentally restructuring validation logic for maintainability.",
   "instrument_version": "0.1.3"
 }

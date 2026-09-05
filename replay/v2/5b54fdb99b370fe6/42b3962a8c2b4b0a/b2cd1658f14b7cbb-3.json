@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5806,
-  "cost_usd": 0.0108864,
-  "tokens_in": 37924,
-  "tokens_out": 126,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was working from a spec with (at least) two requirements — tightening email validation and raising the minimum signup age from 13 to 16 — and completed only the first, implementing a stricter regex requiring a domain dot. It deliberately withheld the age-floor change because it would silently affect existing 13-15 year old accounts, flagging that as a product decision needing clarification rather than guessing.",
   "instrument_version": "0.1.2"
 }

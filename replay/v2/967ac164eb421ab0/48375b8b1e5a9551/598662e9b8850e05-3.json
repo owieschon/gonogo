@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3548,
-  "cost_usd": 0.0053655000000000005,
-  "tokens_in": 2586,
-  "tokens_out": 133,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was working to prevent duplicate account signups by treating gmail-style aliases (dots, plus-tags, case, whitespace) as the same underlying address, normalizing this canonical form during signup validation and exposing a helper to detect existing duplicates across a list of emails. This suggests the broader goal was closing an account-fraud or duplicate-registration loophole rather than merely reformatting email strings.",
   "instrument_version": "0.1.3"
 }

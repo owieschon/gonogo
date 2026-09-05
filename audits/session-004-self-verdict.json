@@ -552,7 +552,7 @@
     "started_at": "2026-09-01T03:03:10.075Z",
     "finished_at": "2026-09-01T03:08:21.941Z",
     "duration_ms": 311869,
-    "cost_usd": 4.0829238,
+    "cost_usd": null,
     "repo": "/Users/owieschon/gonogo",
     "base": "835f26c00d533160f933da333ba8bd66f9e43915",
     "head": "376d692c296ecd5c3f4145ab893f457c19969cab",

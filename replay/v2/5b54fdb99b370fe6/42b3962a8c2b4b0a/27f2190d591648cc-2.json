@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5685,
-  "cost_usd": 0.0123554,
-  "tokens_in": 39054,
-  "tokens_out": 158,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was asked to fix email validation to require a dot in the domain (implemented via the new `EMAIL_PATTERN` regex in `src/rules/email.js`), but it also took the opportunity to refactor `validateSignup` into a rule-based module structure and modernize a function in `legacy-import.js` beyond what was requested. This is a case of two intertwined objectives: a targeted bug fix (dotless-domain emails) bundled with unrequested speculative refactoring.",
   "instrument_version": "0.1.2"
 }

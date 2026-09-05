@@ -20,6 +20,23 @@ import { GONOGO_VERSION } from "./version.ts";
 import { serializeCacheEntry } from "./replay.ts";
 import type { CacheEntry } from "./replay.ts";
 
+export function formatEvalUsage(
+  runs: Pick<JudgeEvent, "cost_usd" | "tokens_in">[],
+  replay: boolean,
+): string {
+  const costKnown = runs.length > 0 && runs.every((r) => r.cost_usd !== null);
+  const tokensKnown = runs.length > 0 && runs.every((r) => r.tokens_in !== null);
+  const cost = costKnown
+    ? "$" + runs.reduce((sum, r) => sum + (r.cost_usd ?? 0), 0).toFixed(4)
+    : "unavailable";
+  const tokens = tokensKnown
+    ? `${(runs.reduce((sum, r) => sum + (r.tokens_in ?? 0), 0) / 1000).toFixed(0)}k prompt tokens`
+    : "prompt tokens unavailable";
+  return `${tokens} · ` + (replay
+    ? `cost $0.0000 (replayed) (recorded cost ${cost})`
+    : `cost ${cost}`);
+}
+
 export interface EvalOptions {
   fixturesDir: string;
   promptsDir: string;
@@ -431,10 +448,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
     if (malformed > 0) lines.push(`  ${malformed} malformed line(s) skipped in ${o.eventsPath}`);
   }
 
-  const costs = runs.map((r) => r.cost_usd).filter((c): c is number => typeof c === "number");
-  const totalCost = costs.reduce((a, b) => a + b, 0);
   const judgeMs = runs.reduce((a, r) => a + r.latency_ms, 0);
-  const tokensIn = runs.reduce((a, r) => a + (r.tokens_in ?? 0), 0);
   lines.push("");
   lines.push(
     `${runs.length} runs (${fixtures.length} fixtures × k=${o.k})` +
@@ -442,9 +456,7 @@ export async function runEval(o: EvalOptions): Promise<EvalReport> {
   );
   lines.push(
     `wall time ${(wallMs / 1000).toFixed(1)}s · judge time ${(judgeMs / 1000).toFixed(1)}s · ` +
-      `${(tokensIn / 1000).toFixed(0)}k prompt tokens · ` +
-      `cost ${o.replay ? "$0.0000 (replayed)" : "$" + totalCost.toFixed(4)}` +
-      (o.replay ? ` (recorded runs cost $${totalCost.toFixed(4)})` : ""),
+      formatEvalUsage(runs, o.replay),
   );
   void retries;
 

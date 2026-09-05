@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 7087,
-  "cost_usd": 0.0364256,
-  "tokens_in": 38626,
-  "tokens_out": 163,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent added email normalization (lower-casing, trimming, and collapsing Gmail dot/plus aliases) into the signup validator and exposed it via a new `findDuplicateEmails` helper, evidently to detect that different-looking signup addresses actually belong to the same account. The transcript's claim that this closes a spec and that a dotless-domain test is still failing doesn't change that reading — no spec.md or test.js is shown in the diff, so that detail is unverifiable from the evidence given."
 }

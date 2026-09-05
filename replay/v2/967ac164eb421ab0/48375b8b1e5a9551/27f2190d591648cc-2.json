@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3511,
-  "cost_usd": 0.0057689,
-  "tokens_in": 3014,
-  "tokens_out": 128,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening email validation to require a dotted domain, which it did by adding a stricter regex pattern, and then took the opportunity to refactor the monolithic validateSignup function into separate rule modules under src/rules/ for easier extensibility. It also made an unrelated stylistic tweak to legacy-import.js, converting a function declaration to an arrow function for consistency.",
   "instrument_version": "0.1.3"
 }

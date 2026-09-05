@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3153,
-  "cost_usd": 0.0044372000000000005,
-  "tokens_in": 1885,
-  "tokens_out": 122,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening email signup validation to require a properly formatted address (including a domain with a dot) rather than merely checking for an \"@\" symbol. It also appears to have been asked to raise the minimum signup age from 13 to 16, but it deliberately left that change unmade, flagging an ambiguous policy question about existing underage accounts for the user to resolve first.",
   "instrument_version": "0.1.4"
 }

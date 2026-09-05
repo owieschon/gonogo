@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 38746,
-  "cost_usd": 0.08997820000000001,
-  "tokens_in": 12809,
-  "tokens_out": 3904,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "{\"repairs\":[{\"dimension\":\"goal_alignment\",\"status\":\"repaired\",\"citations\":[\"replacing a weak email check (mere \\\"@\\\" presence) with a proper email-format pattern requiring a domain dot\",\"It deliberately stopped short of also raising the minimum signup age\",\"Raise the signup minimum age from 13 to 16, and update the error message so\",\"it names the new floor.\"]},{\"dimension\":\"spec_clarity\",\"status\":\"repaired\",\"citations\":[\"Reject email addresses whose domain has no dot.\",\"Raise the signup minimum age from 13 to 16, and update the error message so\",\"it names the new floor.\"]}]}",
   "instrument_version": "0.1.5"
 }

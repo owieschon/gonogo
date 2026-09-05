@@ -10,8 +10,8 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 6714,
-  "cost_usd": 0.0383026,
-  "tokens_in": 39054,
-  "tokens_out": 145,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was asked to fix the email validation rule to require a dot in the domain (implemented via the new `EMAIL_PATTERN` regex in src/rules/email.js), but it also took the opportunity to refactor validate.js's inlined checks into a rules-array/orchestrator pattern with separate files per rule, plus an unrelated stylistic tweak to legacy-import.js's function syntax — extra scope beyond the stated fix."
 }
