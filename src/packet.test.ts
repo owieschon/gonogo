@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, readFileSync, statSync } from "node:fs";
+import { linkSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,7 +18,7 @@ import { subjectHashOf } from "./subject.ts";
 // study result and no case_id here names a real evaluation.
 
 const NOT_SUPPLIED: ExposureCheck = { supplied: false };
-const NO_EXPOSURE: ExposureCheck = { supplied: true, exposedCaseIds: new Set() };
+const NO_EXPOSURE: ExposureCheck = { supplied: true, complete: true, coveredThrough: null, exposedCaseIds: new Set() };
 const A_BASE = "a".repeat(40);
 const A_HEAD = "b".repeat(40);
 
@@ -143,7 +143,25 @@ test("a reconstructed artifact can pass but is never holdout-eligible", () => {
   withTempDir((dir) => {
     const { externalProtocol } = buildValidPacket(dir);
     const manifest = readManifest(dir);
+    // "reconstructed" requires actual content present (it is not "missing"),
+    // so the payload must carry a non-null transcript to agree with it.
+    const payload = {
+      spec: "synthetic spec",
+      diff: "synthetic diff",
+      commitMessages: "synthetic commits",
+      transcript: "a reconstructed transcript, not the original",
+      test: null,
+    };
+    const content = JSON.stringify(payload);
+    const digest = sha256(content);
+    writeFileSync(join(dir, "payload.json"), content);
+    manifest.evidence.payload_file.sha256 = digest;
+    manifest.evidence.subject_hash = subjectHashOf(payload);
     manifest.evidence.artifact_provenance.transcript = "reconstructed";
+    for (const arm of manifest.arms) {
+      arm.review_files[0].sha256 = digest;
+      arm.evidence_hash = createHash("sha256").update(JSON.stringify([`payload.json:${digest}`]), "utf8").digest("hex");
+    }
     writeManifest(dir, manifest);
     const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
     expect(result.ok).toBe(true);
@@ -249,7 +267,7 @@ test("a case in the exposure log cannot pass as untouched", () => {
     const { externalProtocol } = buildValidPacket(dir);
     const result = validatePacket(
       dir,
-      { supplied: true, exposedCaseIds: new Set(["case-synthetic-001"]) },
+      { supplied: true, complete: true, coveredThrough: null, exposedCaseIds: new Set(["case-synthetic-001"]) },
       externalProtocol,
     );
     expect(result.ok).toBe(false);
@@ -562,6 +580,285 @@ test("a malformed null entry in a declared file list is a named refusal, not a t
     }).not.toThrow();
     expect(result!.ok).toBe(false);
     if (!result!.ok) expect(result!.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("a payload with an extra reviewer-visible key fails closed, even with every digest recomputed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    const payload: Record<string, unknown> = {
+      spec: "synthetic spec",
+      diff: "synthetic diff",
+      commitMessages: "synthetic commits",
+      transcript: null,
+      test: null,
+      answer_or_outcome: "known answer",
+    };
+    const content = JSON.stringify(payload);
+    const digest = sha256(content);
+    writeFileSync(join(dir, "payload.json"), content);
+    manifest.evidence.payload_file.sha256 = digest;
+    // subjectHashOf ignores the extra key, so the recomputed subject_hash is
+    // unaffected by it — the shape check must catch it regardless.
+    manifest.evidence.subject_hash = subjectHashOf(payload as any);
+    for (const arm of manifest.arms) {
+      arm.review_files[0].sha256 = digest;
+      arm.evidence_hash = createHash("sha256").update(JSON.stringify([`payload.json:${digest}`]), "utf8").digest("hex");
+    }
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("an extra key nested inside test also fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    const payload: Record<string, unknown> = {
+      spec: "synthetic spec",
+      diff: "synthetic diff",
+      commitMessages: "synthetic commits",
+      transcript: null,
+      test: { command: "npm test", exitCode: 0, output: "ok", extra: "smuggled" },
+    };
+    const content = JSON.stringify(payload);
+    const digest = sha256(content);
+    writeFileSync(join(dir, "payload.json"), content);
+    manifest.evidence.payload_file.sha256 = digest;
+    for (const arm of manifest.arms) {
+      arm.review_files[0].sha256 = digest;
+      arm.evidence_hash = createHash("sha256").update(JSON.stringify([`payload.json:${digest}`]), "utf8").digest("hex");
+    }
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("a non-finite test.exitCode (JSON 1e309 parses to Infinity) fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    // JSON.parse("1e309") yields the number Infinity; typeof Infinity is
+    // "number", so only a finite-integer check catches this.
+    const content = '{"spec":"s","diff":"d","commitMessages":"c","transcript":null,"test":{"command":"c","exitCode":1e309,"output":"o"}}';
+    const digest = sha256(content);
+    writeFileSync(join(dir, "payload.json"), content);
+    manifest.evidence.payload_file.sha256 = digest;
+    for (const arm of manifest.arms) {
+      arm.review_files[0].sha256 = digest;
+      arm.evidence_hash = createHash("sha256").update(JSON.stringify([`payload.json:${digest}`]), "utf8").digest("hex");
+    }
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("provenance declaring content present when the payload has none fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    // Payload's transcript/test are both null (missing), but provenance
+    // claims "original" for both — a mechanical contradiction.
+    manifest.evidence.artifact_provenance.transcript = "original";
+    manifest.evidence.artifact_provenance.test = "original";
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("provenance declaring content missing when the payload actually has it fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    // spec/diff/commitMessages are all non-empty in buildValidPacket's
+    // payload, but provenance claims spec is "missing".
+    manifest.evidence.artifact_provenance.spec = "missing";
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("changed instruction bytes with an unchanged (stale) arm evidence_hash fail closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    const firstContent = "first framing";
+    writeFileSync(join(dir, "instructions.md"), firstContent);
+    manifest.arms[0].instructions_files = [{ path: "instructions.md", sha256: sha256(firstContent), role: "instruction" }];
+    manifest.arms[0].evidence_hash = createHash("sha256")
+      .update(
+        JSON.stringify([`instructions.md:${sha256(firstContent)}`, `payload.json:${manifest.evidence.payload_file.sha256}`].sort()),
+        "utf8",
+      )
+      .digest("hex");
+    writeManifest(dir, manifest);
+    const first = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(first.ok).toBe(true);
+
+    // Instruction bytes change; evidence_hash is deliberately left stale.
+    writeFileSync(join(dir, "instructions.md"), "materially different framing");
+    manifest.arms[0].instructions_files[0].sha256 = sha256("materially different framing");
+    writeManifest(dir, manifest);
+    const second = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.failures.some((f) => f.reason === "payload_digest_mismatch")).toBe(true);
+  });
+});
+
+test("a properly recomputed arm evidence_hash may legitimately differ from another arm's", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    const content = "gonogo-specific framing";
+    writeFileSync(join(dir, "instructions.md"), content);
+    const instructionsFile = { path: "instructions.md", sha256: sha256(content), role: "instruction" as const };
+    manifest.arms[0].instructions_files = [instructionsFile];
+    manifest.arms[0].evidence_hash = createHash("sha256")
+      .update(JSON.stringify([`instructions.md:${instructionsFile.sha256}`, `payload.json:${manifest.evidence.payload_file.sha256}`].sort()), "utf8")
+      .digest("hex");
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // The two arms' review_files are identical (the shared payload), but
+      // arm "gonogo" now also has instructions and arm "one_pass" does not,
+      // so this passing result rests on their evidence_hash values differing.
+      expect(manifest.arms[0].evidence_hash).not.toBe(manifest.arms[1].evidence_hash);
+    }
+  });
+});
+
+test("a blank arm name fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    manifest.arms[0].name = "   ";
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("duplicate arm names fail closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    manifest.arms[1].name = manifest.arms[0].name;
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("a duplicate file declaration within one list fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    manifest.protocol_files.push({ ...manifest.protocol_files[0] });
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("a hard-linked duplicate declaration within one list is still caught by physical identity", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    linkSync(join(dir, "PROTOCOL.md"), join(dir, "PROTOCOL-hardlink.md"));
+    manifest.protocol_files.push({ path: "PROTOCOL-hardlink.md", sha256: manifest.protocol_files[0].sha256, role: "protocol" });
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("one physical file assigned conflicting roles across lists fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const manifest = readManifest(dir);
+    // Same declared path as protocol_files[0], but also listed as an
+    // instrument file with a different role for the identical physical file.
+    manifest.instrument_files.push({ ...manifest.protocol_files[0], role: "instrument" });
+    writeManifest(dir, manifest);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
+  });
+});
+
+test("the same physical evidence file reused with the same role by every arm remains legitimate", () => {
+  // This is the baseline packet itself: every arm's review_files points at
+  // the identical evidence.payload_file with role "review". It must pass.
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const result = validatePacket(dir, NO_EXPOSURE, externalProtocol);
+    expect(result.ok).toBe(true);
+  });
+});
+
+test("an external pin for a path the packet does not declare fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const pinWithExtra = new Map(externalProtocol);
+    pinWithExtra.set("REQUIRED-SECOND.md", sha256("an externally required second protocol"));
+    const result = validatePacket(dir, NO_EXPOSURE, pinWithExtra);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "protocol_digest_mismatch")).toBe(true);
+  });
+});
+
+test("an exposure record that is supplied but not marked complete fails closed on an untouched claim", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const result = validatePacket(
+      dir,
+      { supplied: true, complete: false, coveredThrough: null, exposedCaseIds: new Set() },
+      externalProtocol,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "exposure_record_incomplete")).toBe(true);
+  });
+});
+
+test("an exposure record whose covered_through predates the packet's data_cutoff fails closed", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    // Packet's data_cutoff is 2026-01-01.
+    const result = validatePacket(
+      dir,
+      { supplied: true, complete: true, coveredThrough: "2025-06-01", exposedCaseIds: new Set() },
+      externalProtocol,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "exposure_record_incomplete")).toBe(true);
+  });
+});
+
+test("an exposure record whose covered_through reaches the packet's data_cutoff passes", () => {
+  withTempDir((dir) => {
+    const { externalProtocol } = buildValidPacket(dir);
+    const result = validatePacket(
+      dir,
+      { supplied: true, complete: true, coveredThrough: "2026-01-01", exposedCaseIds: new Set() },
+      externalProtocol,
+    );
+    expect(result.ok).toBe(true);
   });
 });
 

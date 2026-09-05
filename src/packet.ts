@@ -21,7 +21,7 @@
  * unlinked hashes.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { subjectHashOf, type SubjectInput } from "./subject.ts";
 
@@ -38,6 +38,7 @@ export const DISQUALIFY_REASONS = [
   "forbidden_review_material",
   "exposed_case_claims_untouched",
   "exposure_record_not_supplied",
+  "exposure_record_incomplete",
   "arm_evidence_mismatch",
 ] as const;
 
@@ -172,10 +173,17 @@ export type ValidationResult =
  * Whether an "untouched" declaration is even checkable. A caller that
  * supplies no exposure record at all gets no default — "no record" and
  * "record with nothing in it" are different claims, and only the latter can
- * back an untouched declaration.
+ * back an untouched declaration. Supplying a record is still not enough on
+ * its own: `complete` is the operator's explicit assertion that the record
+ * covers every case it should, and a bare id array with no such assertion
+ * cannot support "untouched" either — a caller who only ever checked half
+ * their history and forgot to say so would otherwise look identical to one
+ * who checked everything. `coveredThrough`, when given, must reach at least
+ * the packet's own `data_cutoff` or the record does not cover this packet's
+ * declared window. None of this proves the record is historically true.
  */
 export type ExposureCheck =
-  | { supplied: true; exposedCaseIds: ReadonlySet<string> }
+  | { supplied: true; complete: boolean; coveredThrough: string | null; exposedCaseIds: ReadonlySet<string> }
   | { supplied: false };
 
 /**
@@ -208,7 +216,7 @@ function isArtifactStatus(v: unknown): v is ArtifactStatus {
  * (no trailing time component or garbage) and semantically valid (rejects
  * e.g. "2026-02-30", which `Date` would otherwise silently roll into March).
  */
-function isValidIsoDate(v: unknown): v is string {
+export function isValidIsoDate(v: unknown): v is string {
   if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const d = new Date(`${v}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
@@ -259,6 +267,17 @@ function readForDigest(absPath: string): FileRead {
  * lists so an "answer" or "outcome" file cannot masquerade as review or
  * instruction material. Returns only entries that were well-formed and
  * matched on disk, so a caller can tell "nothing declared" from "clean".
+ *
+ * `pathRoles` is shared across every call for one packet: it is how a
+ * single physical file (by realpath, so an alias is not a way around this)
+ * is refused a second, conflicting role when it appears in a different list
+ * elsewhere in the same packet — a protocol file cannot separately be
+ * declared an instrument file. The same file appearing with the *same* role
+ * in more than one place (e.g. every arm's review_files pointing at the one
+ * shared evidence file) is expected and stays valid. Duplicate declarations
+ * of the same physical file *within* one list — even naming it identically
+ * twice — are refused regardless of role, since a list is not a set here and
+ * a repeated entry only pads or confuses it.
  */
 function checkFiles(
   root: string,
@@ -268,8 +287,10 @@ function checkFiles(
   digestReason: DisqualifyReason,
   failures: ValidationFailure[],
   forbidExtraRoles: readonly FileRole[] = [],
+  pathRoles: Map<string, FileRole> = new Map(),
 ): PacketFile[] {
   const wellFormed: PacketFile[] = [];
+  const seenInThisList = new Set<string>();
   for (const entry of files) {
     if (!isPlainObject(entry)) {
       failures.push({ reason: "malformed_metadata", detail: `${label}: a declared file entry is not an object` });
@@ -314,14 +335,46 @@ function checkFiles(
     const declared: PacketFile = { path: f.path, sha256: f.sha256, role: f.role };
     if (!read.ok) {
       failures.push({ reason: digestReason, detail: `${declared.path}: ${read.error}` });
-    } else if (read.sha256 !== declared.sha256) {
+      continue;
+    }
+    if (read.sha256 !== declared.sha256) {
       failures.push({
         reason: digestReason,
         detail: `${declared.path}: declared sha256 ${declared.sha256} does not match actual ${read.sha256}`,
       });
-    } else {
-      wellFormed.push(declared);
+      continue;
     }
+    // realpath alone identifies a symlink alias but not a hard link: two
+    // hard-linked paths are two independent directory entries with no
+    // symlink between them, so realpath returns each path unchanged. Device
+    // and inode are what the kernel actually uses to say "this is one
+    // file," so that identity — not the path spelling — is the key.
+    let physicalKey: string;
+    try {
+      const real = realpathSync(abs);
+      const stat = statSync(real);
+      physicalKey = `${stat.dev}:${stat.ino}`;
+    } catch {
+      physicalKey = abs;
+    }
+    if (seenInThisList.has(physicalKey)) {
+      failures.push({
+        reason: "malformed_metadata",
+        detail: `${label}: ${declared.path} is a duplicate declaration of a file already listed here`,
+      });
+      continue;
+    }
+    seenInThisList.add(physicalKey);
+    const priorRole = pathRoles.get(physicalKey);
+    if (priorRole !== undefined && priorRole !== declared.role) {
+      failures.push({
+        reason: "malformed_metadata",
+        detail: `${declared.path} is declared role "${declared.role}" here but role "${priorRole}" elsewhere for the same physical file`,
+      });
+      continue;
+    }
+    pathRoles.set(physicalKey, declared.role);
+    wellFormed.push(declared);
   }
   return wellFormed;
 }
@@ -357,19 +410,38 @@ function checkSourceIdentity(source: unknown, failures: ValidationFailure[]): vo
   }
 }
 
+const SUBJECT_INPUT_KEYS = new Set(["spec", "diff", "commitMessages", "transcript", "test"]);
+const TEST_RESULT_KEYS = new Set(["command", "exitCode", "output"]);
+
+function hasExactKeys(obj: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
+  const actual = Object.keys(obj);
+  return actual.length === keys.size && actual.every((k) => keys.has(k));
+}
+
 /**
  * `subjectHashOf` assumes its input already has the shape it hashes; a
  * missing `test` or a `test` that is not `null`/`{command, exitCode, output}`
- * throws instead of failing closed. Validate the shape ourselves first so a
- * malformed payload becomes a named refusal.
+ * throws instead of failing closed, and it silently ignores any property
+ * outside its fixed tuple — so a reviewer-visible payload could carry an
+ * extra field (e.g. an answer or outcome marker) that never affects
+ * subject_hash and is never barred by the SubjectInput shape check. Both are
+ * closed here: every top-level and nested key must be exactly the expected
+ * set, no more and no fewer, before the payload is accepted or hashed.
  */
 function isSubjectInput(v: unknown): v is SubjectInput {
-  if (!isPlainObject(v)) return false;
+  if (!isPlainObject(v) || !hasExactKeys(v, SUBJECT_INPUT_KEYS)) return false;
   if (typeof v.spec !== "string" || typeof v.diff !== "string" || typeof v.commitMessages !== "string") return false;
   if (v.transcript !== null && typeof v.transcript !== "string") return false;
   if (v.test !== null) {
-    if (!isPlainObject(v.test)) return false;
-    if (typeof v.test.command !== "string" || typeof v.test.exitCode !== "number" || typeof v.test.output !== "string") {
+    if (!isPlainObject(v.test) || !hasExactKeys(v.test, TEST_RESULT_KEYS)) return false;
+    // Number.isInteger, not typeof: JSON's 1e309 parses to the *number*
+    // Infinity, which subjectHashOf's JSON.stringify silently normalizes to
+    // null — a finite-integer check is what actually rejects that.
+    if (
+      typeof v.test.command !== "string" ||
+      !Number.isInteger(v.test.exitCode) ||
+      typeof v.test.output !== "string"
+    ) {
       return false;
     }
   }
@@ -393,6 +465,44 @@ function checkArtifactProvenance(prov: unknown, failures: ValidationFailure[]): 
     }
   }
   return allValid ? (prov as unknown as ArtifactProvenance) : null;
+}
+
+/**
+ * `original`/`missing`/`reconstructed` is an attestation this checker cannot
+ * prove — but "missing" versus "present" is not: it is mechanically visible
+ * in the payload itself, and a declaration that contradicts it is refused.
+ * `transcript`/`test` are nullable, so absence is `=== null`. `spec`/`diff`/
+ * `commitMessages` are required strings with no null case in SubjectInput;
+ * the documented representation of "missing" for them is the empty string
+ * `""` — a declared status of `missing` requires that exact representation,
+ * and any non-`missing` status requires a non-empty string.
+ */
+function checkProvenanceAgreement(
+  prov: ArtifactProvenance,
+  payload: SubjectInput,
+  failures: ValidationFailure[],
+): void {
+  const checks: [field: keyof ArtifactProvenance, present: boolean][] = [
+    ["spec", payload.spec !== ""],
+    ["diff", payload.diff !== ""],
+    ["commit_messages", payload.commitMessages !== ""],
+    ["transcript", payload.transcript !== null],
+    ["test", payload.test !== null],
+  ];
+  for (const [field, present] of checks) {
+    const declared = prov[field];
+    if (declared === "missing" && present) {
+      failures.push({
+        reason: "malformed_metadata",
+        detail: `evidence.artifact_provenance.${field} is declared "missing" but the payload contains content for it`,
+      });
+    } else if (declared !== "missing" && !present) {
+      failures.push({
+        reason: "malformed_metadata",
+        detail: `evidence.artifact_provenance.${field} is declared "${declared}" but the payload has no content for it (must be "missing")`,
+      });
+    }
+  }
 }
 
 /**
@@ -477,6 +587,20 @@ export function validatePacket(
         reason: "exposure_record_not_supplied",
         detail: "packet declares untouched but the caller supplied no exposure record to check it against",
       });
+    } else if (!exposure.complete) {
+      failures.push({
+        reason: "exposure_record_incomplete",
+        detail: "the supplied exposure record does not assert completeness, so it cannot back an untouched declaration",
+      });
+    } else if (
+      exposure.coveredThrough !== null &&
+      isValidIsoDate(raw.data_cutoff) &&
+      exposure.coveredThrough < (raw.data_cutoff as string)
+    ) {
+      failures.push({
+        reason: "exposure_record_incomplete",
+        detail: `exposure record covered_through ${exposure.coveredThrough} does not reach the packet's data_cutoff ${raw.data_cutoff}`,
+      });
     } else if (caseId !== null && exposure.exposedCaseIds.has(caseId)) {
       failures.push({
         reason: "exposed_case_claims_untouched",
@@ -492,6 +616,10 @@ export function validatePacket(
     });
   }
 
+  // Shared across every checkFiles call below: one physical file, by
+  // realpath, cannot carry two different declared roles across lists.
+  const pathRoles = new Map<string, FileRole>();
+
   const protocolFiles = Array.isArray(raw.protocol_files) ? raw.protocol_files : null;
   if (protocolFiles === null) {
     failures.push({ reason: "malformed_metadata", detail: "packet.json protocol_files must be an array" });
@@ -501,7 +629,10 @@ export function validatePacket(
       detail: "packet.json protocol_files declares no frozen protocol document",
     });
   } else {
-    const wellFormedProtocol = checkFiles(packetDir, "protocol_files", protocolFiles, "protocol", "protocol_digest_mismatch", failures);
+    const wellFormedProtocol = checkFiles(
+      packetDir, "protocol_files", protocolFiles, "protocol", "protocol_digest_mismatch", failures, [], pathRoles,
+    );
+    const declaredPaths = new Set(wellFormedProtocol.map((f) => f.path));
     for (const f of wellFormedProtocol) {
       const pin = externalProtocol.get(f.path);
       if (pin === undefined) {
@@ -516,6 +647,18 @@ export function validatePacket(
         });
       }
     }
+    // The reverse direction: a pin the caller supplied but the packet never
+    // declares is an incomplete or ambiguous frozen identity, not a no-op —
+    // the caller believed a second protocol document was part of this
+    // packet's frozen identity, and the packet silently disagrees.
+    for (const pinnedPath of externalProtocol.keys()) {
+      if (!declaredPaths.has(pinnedPath)) {
+        failures.push({
+          reason: "protocol_digest_mismatch",
+          detail: `${pinnedPath}: an external pin was supplied for this path but packet.json protocol_files does not declare it`,
+        });
+      }
+    }
   }
 
   const instrumentFiles = Array.isArray(raw.instrument_files) ? raw.instrument_files : null;
@@ -527,7 +670,7 @@ export function validatePacket(
       detail: "packet.json instrument_files declares no frozen judge instrument",
     });
   } else {
-    checkFiles(packetDir, "instrument_files", instrumentFiles, "instrument", "payload_digest_mismatch", failures);
+    checkFiles(packetDir, "instrument_files", instrumentFiles, "instrument", "payload_digest_mismatch", failures, [], pathRoles);
   }
 
   const forbiddenMarkers: string[] = [];
@@ -570,6 +713,8 @@ export function validatePacket(
         "review",
         "payload_digest_mismatch",
         failures,
+        [],
+        pathRoles,
       );
       payloadFile = wellFormedPayload[0] ?? null;
       if (payloadFile !== null) {
@@ -588,7 +733,7 @@ export function validatePacket(
           if (!isSubjectInput(parsed)) {
             failures.push({
               reason: "malformed_metadata",
-              detail: "evidence.payload_file does not have the required SubjectInput shape (spec/diff/commitMessages strings, transcript null-or-string, test null or {command, exitCode, output})",
+              detail: "evidence.payload_file does not have the required SubjectInput shape: exactly the keys spec/diff/commitMessages/transcript/test, with spec/diff/commitMessages strings, transcript null-or-string, and test null or exactly {command, exitCode, output}",
             });
           } else {
             const actual = subjectHashOf(parsed);
@@ -600,6 +745,9 @@ export function validatePacket(
             } else {
               subjectHash = actual;
             }
+            if (artifactProvenance !== null) {
+              checkProvenanceAgreement(artifactProvenance, parsed, failures);
+            }
           }
         }
       }
@@ -607,6 +755,7 @@ export function validatePacket(
   }
 
   const arms = Array.isArray(raw.arms) ? raw.arms : null;
+  const seenArmNames = new Set<string>();
   if (arms === null || arms.length === 0) {
     failures.push({ reason: "malformed_metadata", detail: "packet.json arms must be a non-empty array" });
   } else {
@@ -614,13 +763,19 @@ export function validatePacket(
       if (
         !isPlainObject(arm) ||
         typeof arm.name !== "string" ||
+        arm.name.trim() === "" ||
         !SHA256_HEX.test(String(arm.evidence_hash ?? "")) ||
         !Array.isArray(arm.review_files) ||
         (arm.instructions_files !== undefined && !Array.isArray(arm.instructions_files))
       ) {
-        failures.push({ reason: "malformed_metadata", detail: "an arm is missing a required field" });
+        failures.push({ reason: "malformed_metadata", detail: "an arm is missing a required field, or its name is blank" });
         continue;
       }
+      if (seenArmNames.has(arm.name)) {
+        failures.push({ reason: "malformed_metadata", detail: `duplicate arm name "${arm.name}"` });
+        continue;
+      }
+      seenArmNames.add(arm.name);
 
       if (arm.review_files.length === 0) {
         failures.push({
@@ -649,6 +804,7 @@ export function validatePacket(
         "payload_digest_mismatch",
         failures,
         FORBIDDEN_IN_REVIEW_INPUT,
+        pathRoles,
       );
       const instructionFiles = Array.isArray(arm.instructions_files) ? arm.instructions_files : [];
       const wellFormedInstructions = checkFiles(
@@ -659,6 +815,7 @@ export function validatePacket(
         "payload_digest_mismatch",
         failures,
         FORBIDDEN_IN_REVIEW_INPUT,
+        pathRoles,
       );
 
       for (const marker of forbiddenMarkers) {
@@ -686,12 +843,17 @@ export function validatePacket(
         }
       }
 
-      if (wellFormedReview.length === arm.review_files.length) {
-        const actualEvidenceHash = renderedEvidenceHash(packetDir, wellFormedReview);
+      if (wellFormedReview.length === arm.review_files.length && wellFormedInstructions.length === instructionFiles.length) {
+        // Everything reviewer-visible for this arm: review files and
+        // instructions together, so changed instruction bytes change this
+        // arm's identity even when review_files (the shared evidence) does
+        // not. subject_hash stays the separate, narrower identity of the
+        // raw evidence tuple alone.
+        const actualEvidenceHash = renderedEvidenceHash(packetDir, [...wellFormedReview, ...wellFormedInstructions]);
         if (actualEvidenceHash !== arm.evidence_hash) {
           failures.push({
             reason: "payload_digest_mismatch",
-            detail: `${arm.name}: declared evidence_hash does not match the actual review material`,
+            detail: `${arm.name}: declared evidence_hash does not match the actual review and instruction material`,
           });
         }
       }

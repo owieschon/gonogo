@@ -30,6 +30,13 @@ tool, not its operator.
                                        # check; see METHODS.md section 3. Omitting
                                        # --exposure-log fails closed on an "untouched"
                                        # packet rather than defaulting to a clean pass.
+                                       # <localTrustedFile> must not be the packet's own
+                                       # file or a symlink/hard-link alias of it.
+                                       # --exposure-log must be a versioned object
+                                       # ({"schema":"gonogo/exposure-log@1","complete":
+                                       # true,"exposed_case_ids":[...]}), not a bare
+                                       # array — "complete" must be true to back an
+                                       # "untouched" claim.
 
 `bun` is required for every run; the `claude` CLI is required only for a live
 one. `--replay` needs neither the `claude` CLI nor judge credentials, which is
