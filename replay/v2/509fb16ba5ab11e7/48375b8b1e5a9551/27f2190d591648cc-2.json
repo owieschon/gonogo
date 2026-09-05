@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 4329,
-  "cost_usd": 0.005584199999999999,
-  "tokens_in": 3015,
-  "tokens_out": 116,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening email validation to require a dot in the domain, which it did by introducing a stricter regex pattern, and along the way it refactored the monolithic validateSignup function into modular per-field rule files under src/rules/. The legacy-import.js arrow-function tweak is unrelated cosmetic cleanup with no functional purpose.",
   "instrument_version": "0.1.4"
 }

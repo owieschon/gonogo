@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 4192,
-  "cost_usd": 0.0064578,
-  "tokens_in": 3027,
-  "tokens_out": 174,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening email validation to require a dot in the domain (replacing the loose `@`-only check with a proper regex pattern), which it accomplished via `checkEmail`'s new `EMAIL_PATTERN`. Alongside this, it refactored the signup validation logic into separate rule modules under `src/rules/` with a `RULES` array orchestrator, and made a minor stylistic tweak to `legacy-import.js` for consistency—changes not required by the stated goal but done opportunistically while in the file.",
   "instrument_version": "0.1.5"
 }

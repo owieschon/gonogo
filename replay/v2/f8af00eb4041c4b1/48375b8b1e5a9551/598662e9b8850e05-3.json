@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5249,
-  "cost_usd": 0.0056394,
-  "tokens_in": 2599,
-  "tokens_out": 151,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was extending signup email validation to canonicalize Gmail-style addresses (stripping dots and plus-tags) so that alias variants of the same address are treated as equivalent, and adding a companion utility to detect duplicate accounts across a list of raw emails using that same normalization. This suggests the underlying goal was preventing duplicate-account signups via Gmail alias abuse, though the agent's own note indicates one test still fails, so the work is incomplete.",
   "instrument_version": "0.1.5"
 }

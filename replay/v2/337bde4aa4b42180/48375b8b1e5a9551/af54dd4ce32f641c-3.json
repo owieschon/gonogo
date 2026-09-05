@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3147,
-  "cost_usd": 0.0039131,
-  "tokens_in": 1778,
-  "tokens_out": 96,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening signup email validation so that inputs merely containing an \"@\" (like \"ada@localhost\") no longer pass, requiring a proper domain with a dot instead. It left age and username validation logic untouched and confirmed via the existing test suite that the stricter check didn't break other cases.",
   "instrument_version": "0.1.6"
 }

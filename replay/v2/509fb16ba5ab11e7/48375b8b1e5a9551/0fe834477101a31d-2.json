@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3637,
-  "cost_usd": 0.0040122000000000005,
-  "tokens_in": 1725,
-  "tokens_out": 105,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in a signup form so that clearly malformed addresses (missing \"@\" or a domain dot) are rejected rather than accepted by the loose substring check. The transcript's claim of implementing \"both requirements\" suggests a second task item was expected but not reflected in the diff, which touches only the email regex.",
   "instrument_version": "0.1.4"
 }

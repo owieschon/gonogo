@@ -27,7 +27,7 @@ One line per ambiguous call, with the reason. Simpler option wins unless stated.
   it a suggestion. `src/rubric.ts` enforces it on parse.
 - **The judge CLI runs in bare mode with settings, MCP servers and the tool
   surface switched off.** A judge needs none of them and they cost ~34k prompt
-  tokens per call (measured: $0.15 → $0.025 per call). Claude Code documents
+  tokens per call (measured: $[redacted] → $[redacted] per call). Claude Code documents
   `--bare` as the reproducible scripting mode; `--tools ""` removes tools,
   whereas `--allowed-tools ""` merely approves none of the available tools.
 - **Legacy unstructured replies remain readable, but live rubric replies are

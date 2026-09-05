@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 4280,
-  "cost_usd": 0.01639875,
-  "tokens_in": 3026,
-  "tokens_out": 141,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tasked with tightening email validation to require a dot in the domain, but along the way it refactored the entire signup validator into separate per-field rule modules with a shared RULES array for easier extensibility, and made an unrelated stylistic tweak to legacy-import.js. The core objective was fixing the email pattern to reject dotless domains; the modularization and legacy code style change were self-initiated scope expansions beyond that fix.",
   "instrument_version": "0.1.6"
 }

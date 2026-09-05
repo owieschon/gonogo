@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3783,
-  "cost_usd": 0.014182500000000002,
-  "tokens_in": 2587,
-  "tokens_out": 126,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was working to prevent duplicate account signups caused by superficially different but functionally identical email addresses (e.g., Gmail dot/plus aliasing and casing differences), by normalizing addresses during validation and adding a utility to detect duplicates across a list. This suggests the underlying goal was to close a signup/account-uniqueness loophole rather than merely improve email format validation.",
   "instrument_version": "0.1.4"
 }

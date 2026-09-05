@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3119,
-  "cost_usd": 0.0039131,
-  "tokens_in": 1778,
-  "tokens_out": 96,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was tightening email validation in the signup form so that addresses lacking a proper domain (e.g., missing a dot) would be rejected, rather than only checking for the presence of an \"@\" symbol. It left age and username validation logic untouched, focusing narrowly on strengthening the email format check.",
   "instrument_version": "0.1.6"
 }

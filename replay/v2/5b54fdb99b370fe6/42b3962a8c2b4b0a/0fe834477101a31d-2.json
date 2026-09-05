@@ -13,9 +13,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5335,
-  "cost_usd": 0.010662399999999999,
-  "tokens_in": 37764,
-  "tokens_out": 119,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent tightened email validation in a signup form by replacing a naive `.includes(\"@\")` check with a regex requiring a properly formed local-part/domain structure, matching a spec that apparently called for a real \"must be a valid address\" check. The transcript's claim of \"both requirements implemented\" can't be verified from the diff alone since only one requirement (email format) is visible here.",
   "instrument_version": "0.1.2"
 }

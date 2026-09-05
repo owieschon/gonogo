@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 5338,
-  "cost_usd": 0.013938750000000001,
-  "tokens_in": 2574,
-  "tokens_out": 113,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent was trying to prevent users from creating multiple accounts via Gmail-style alias tricks (dots and plus-addressing) by normalizing email addresses before validation, and to provide a utility for detecting such duplicate signups across a list of raw addresses. It left the test suite partially failing, noting one dotless-domain case still unresolved.",
   "instrument_version": "0.1.5"
 }

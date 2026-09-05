@@ -14,9 +14,9 @@
   "model_version": "claude-sonnet-5",
   "backend": "claude-cli",
   "latency_ms": 3480,
-  "cost_usd": 0.0159375,
-  "tokens_in": 3015,
-  "tokens_out": 113,
+  "cost_usd": null,
+  "tokens_in": null,
+  "tokens_out": null,
   "text": "The agent's core objective was tightening email validation to reject addresses without a dot in the domain, fixing a failing test case for that scenario. Alongside this, it refactored the signup validation rules (email, age, username) into separate modules with a shared rule-array pattern, and made an unrelated stylistic tweak to legacy-import.js for consistency.",
   "instrument_version": "0.1.4"
 }
