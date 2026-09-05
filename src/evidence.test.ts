@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { collectEvidence, writeEvidence } from "./evidence.ts";
+import { EvidenceConsistencyError, collectEvidence, writeEvidence } from "./evidence.ts";
 import { subjectHashOf } from "./subject.ts";
 
 const repos: string[] = [];
@@ -159,5 +159,117 @@ describe("collectEvidence untracked-file boundary", () => {
       spec: "test",
       excludeUntrackedRoots: [join(path, "..", "other-repo", "runs")],
     })).toThrow("untracked exclusion root must be inside");
+  });
+});
+
+describe("collectEvidence pre/post test consistency", () => {
+  test("passes when an ordinary test leaves the repo unchanged", () => {
+    const path = repo();
+    const evidence = collectEvidence({
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      testCmd: "true",
+    });
+    expect(evidence.test?.exitCode).toBe(0);
+  });
+
+  test("passes when the test only writes a gitignored build artifact", () => {
+    const path = repo();
+    writeFileSync(join(path, ".gitignore"), "dist/\n");
+    runGit(path, "add", ".gitignore");
+    runGit(path, "commit", "--quiet", "-m", "ignore dist");
+
+    const evidence = collectEvidence({
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      testCmd: "mkdir -p dist && echo built > dist/out.js",
+    });
+    expect(evidence.test?.exitCode).toBe(0);
+  });
+
+  test("retains mutation and test evidence without resetting the source", () => {
+    const path = repo();
+    let caught: unknown;
+    try {
+      collectEvidence({
+        repo: path,
+        base: "HEAD",
+        spec: "test",
+        testCmd: "echo mutated >> tracked.ts; echo PASS",
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(EvidenceConsistencyError);
+    const error = caught as EvidenceConsistencyError;
+    expect(error.before.rawDiff).toBe("");
+    expect(error.after.rawDiff).toContain("+mutated");
+    expect(error.test).toEqual({
+      command: "echo mutated >> tracked.ts; echo PASS",
+      exitCode: 0,
+      output: "PASS\n",
+    });
+    expect(readFileSync(join(path, "tracked.ts"), "utf8")).toContain("mutated");
+  });
+
+  test("rejects a test that writes a new, non-ignored untracked source file", () => {
+    const path = repo();
+    expect(() =>
+      collectEvidence({
+        repo: path,
+        base: "HEAD",
+        spec: "test",
+        testCmd: "echo 'export const sneaky = true;' > sneaky.ts",
+      }),
+    ).toThrow(EvidenceConsistencyError);
+  });
+
+  test("rejects a test that commits, moving HEAD", () => {
+    const path = repo();
+    expect(() =>
+      collectEvidence({
+        repo: path,
+        base: "HEAD",
+        spec: "test",
+        testCmd: 'echo x >> tracked.ts && git add tracked.ts && git commit --quiet -m "sneaky"',
+      }),
+    ).toThrow(EvidenceConsistencyError);
+  });
+
+  test("rejects a mutation hidden in the truncated middle of a large diff", () => {
+    const path = repo();
+    const file = join(path, "large.txt");
+    writeFileSync(file, `${"a".repeat(6000)}X${"b".repeat(6000)}`);
+
+    let thrown: unknown;
+    try {
+      collectEvidence({
+        repo: path,
+        base: "HEAD",
+        spec: "test",
+        maxDiffChars: 1000,
+        testCmd: `printf '${"a".repeat(6000)}Y${"b".repeat(6000)}' > large.txt`,
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(EvidenceConsistencyError);
+    const err = thrown as EvidenceConsistencyError;
+    expect(err.before.rawDiff).not.toBe(err.after.rawDiff);
+  });
+
+  test("respects excludeUntrackedRoots when checking for test-induced changes", () => {
+    const path = repo();
+    const runs = join(path, "runs");
+    const evidence = collectEvidence({
+      repo: path,
+      base: "HEAD",
+      spec: "test",
+      excludeUntrackedRoots: [runs],
+      testCmd: "mkdir -p runs && echo output > runs/result.json",
+    });
+    expect(evidence.test?.exitCode).toBe(0);
   });
 });
