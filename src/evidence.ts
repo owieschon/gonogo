@@ -83,6 +83,95 @@ function truncate(s: string, max: number): { text: string; truncated: boolean } 
   };
 }
 
+interface GitSnapshot {
+  head: string;
+  rawDiff: string;
+  changedFiles: string[];
+  commitMessages: string;
+}
+
+/**
+ * Complete (untruncated) Git evidence for `repo` as of the moment this runs.
+ * Called once before the test command and once after, so a test that mutates
+ * tracked or untracked reviewed source is caught even if the mutation lands in
+ * a region a display-length truncation would otherwise hide.
+ */
+function collectGitSnapshot(repo: string, baseSha: string, excludedRoots: string[]): GitSnapshot {
+  const head = git(repo, ["rev-parse", "HEAD"]).trim();
+  const untrackedFiles = nulSeparatedGit(repo, [
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+  ]).filter((path) => outsideRoots(path, excludedRoots));
+  const tracked = git(repo, ["diff", baseSha]);
+  const rawDiff = tracked + untrackedDiff(repo, untrackedFiles);
+  const changedFiles = [
+    ...new Set(
+      nulSeparatedGit(repo, ["diff", "--name-only", baseSha]).concat(untrackedFiles),
+    ),
+  ];
+  const commitMessages = git(repo, [
+    "log",
+    "--no-merges",
+    "--format=commit %h%n%B%n---",
+    `${baseSha}..HEAD`,
+  ]).trim();
+  return { head, rawDiff, changedFiles, commitMessages };
+}
+
+/**
+ * Thrown when the reviewed Git evidence differs before and after the test
+ * command ran. A judge verdict cites the pre-test diff/commits/HEAD; if the
+ * test itself changed any of those, the verdict would describe a repository
+ * state that no longer exists. Carries both snapshots and test output so
+ * the diagnostic doesn't depend on reproducing the mutation.
+ */
+export class EvidenceConsistencyError extends Error {
+  constructor(
+    public readonly reasons: string[],
+    public readonly before: GitSnapshot,
+    public readonly after: GitSnapshot,
+    public readonly test: TestResult | null,
+  ) {
+    const testLine = test
+      ? `\nTest command: ${test.command}\nExit code: ${test.exitCode}`
+      : "";
+    super(
+      "reviewed Git evidence changed during test execution: " +
+        reasons.join("; ") +
+        ". The pre-test diff/commits/HEAD no longer describe what was verified. " +
+        "Require stable reviewed source: move generated artifacts into dedicated " +
+        "ignored/output paths, or exclude them via excludeUntrackedRoots." +
+        testLine,
+    );
+    this.name = "EvidenceConsistencyError";
+  }
+}
+
+function diffSnapshots(before: GitSnapshot, after: GitSnapshot): string[] {
+  const reasons: string[] = [];
+  if (before.head !== after.head) {
+    reasons.push(`HEAD moved from ${before.head} to ${after.head}`);
+  }
+  if (before.rawDiff !== after.rawDiff) {
+    reasons.push("the complete diff against base changed");
+  }
+  if (before.commitMessages !== after.commitMessages) {
+    reasons.push("commit messages between base and HEAD changed");
+  }
+  const beforeFiles = new Set(before.changedFiles);
+  const afterFiles = new Set(after.changedFiles);
+  const added = after.changedFiles.filter((f) => !beforeFiles.has(f));
+  const removed = before.changedFiles.filter((f) => !afterFiles.has(f));
+  if (added.length > 0 || removed.length > 0) {
+    reasons.push(
+      `the changed-files list differs (added: ${added.join(", ") || "none"}; ` +
+        `removed: ${removed.join(", ") || "none"})`,
+    );
+  }
+  return reasons;
+}
+
 interface TestCapture {
   visible: TestResult;
   complete: TestResult;
@@ -121,9 +210,8 @@ export interface CollectOptions {
   /** Raise for a large change; the judge sees eliding as a caveat on the verdict. */
   maxDiffChars?: number;
   /**
-   * Repo-relative or absolute tool-owned directories to omit from untracked
-   * evidence. This prevents a later run from judging artifacts of an earlier
-   * run while preserving deliberately tracked fixture data.
+   * Repo-relative or absolute directories to exclude from untracked evidence.
+   * Detects net pre/post changes; does not isolate concurrent or transient writes.
    */
   excludeUntrackedRoots?: string[];
 }
@@ -142,30 +230,11 @@ export function collectEvidence(opts: CollectOptions): Evidence {
       `base ref "${opts.base}" does not resolve in ${repo}. Pass --base with a ref that exists.`,
     );
   }
-  const head = git(repo, ["rev-parse", "HEAD"]).trim();
   const excludedRoots = repoRelativeRoots(repo, opts.excludeUntrackedRoots ?? []);
-  const untrackedFiles = nulSeparatedGit(repo, [
-    "ls-files",
-    "--others",
-    "--exclude-standard",
-  ]).filter((path) => outsideRoots(path, excludedRoots));
-
-  // Worktree-vs-base, so committed and uncommitted agent work are both seen.
-  const tracked = git(repo, ["diff", baseSha]);
-  const rawDiff = tracked + untrackedDiff(repo, untrackedFiles);
+  const before = collectGitSnapshot(repo, baseSha, excludedRoots);
+  const { head, rawDiff, commitMessages } = before;
+  const changedFiles = before.changedFiles;
   const diffStat = git(repo, ["diff", "--stat", baseSha]).trim();
-  const changedFiles = nulSeparatedGit(repo, ["diff", "--name-only", baseSha])
-    .concat(untrackedFiles);
-
-  // RUBRIC.md counts commit messages as claims the agent made about its work,
-  // alongside the transcript. Collect them or claim_verification is judging
-  // half the record.
-  const commitMessages = git(repo, [
-    "log",
-    "--no-merges",
-    "--format=commit %h%n%B%n---",
-    `${baseSha}..HEAD`,
-  ]).trim();
 
   const diff = truncate(rawDiff, opts.maxDiffChars ?? DEFAULT_MAX_DIFF_CHARS);
 
@@ -179,6 +248,14 @@ export function collectEvidence(opts: CollectOptions): Evidence {
 
   const testCapture = opts.testCmd ? captureTests(repo, opts.testCmd) : null;
   const test = testCapture?.visible ?? null;
+
+  if (opts.testCmd) {
+    const after = collectGitSnapshot(repo, baseSha, excludedRoots);
+    const reasons = diffSnapshots(before, after);
+    if (reasons.length > 0) {
+      throw new EvidenceConsistencyError(reasons, before, after, testCapture?.complete ?? null);
+    }
+  }
 
   return {
     subjectHash: subjectHashOf({
