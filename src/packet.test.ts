@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PACKET_SCHEMA, validatePacket, type EvaluationArm, type PacketFile } from "./packet.ts";
+import { PACKET_SCHEMA, validatePacket, type EvaluationArm, type PacketFile, type ValidationResult } from "./packet.ts";
 import { subjectHashOf } from "./subject.ts";
 
 // All data below is synthetic fixture text for this test only; it is not a
@@ -202,6 +202,51 @@ test("missing case_id fails closed with missing_identity", () => {
     const result = validatePacket(dir, new Set());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.failures.some((f) => f.reason === "missing_identity")).toBe(true);
+  });
+});
+
+test("a packet with no protocol, instrument or review files never passes as untouched", () => {
+  withTempDir((dir) => {
+    const payload = { spec: "synthetic", diff: "synthetic", commitMessages: "synthetic", transcript: null, test: null };
+    writeFileSync(join(dir, "payload.json"), JSON.stringify(payload));
+    const manifest = {
+      schema: PACKET_SCHEMA,
+      packet_version: "1",
+      case_id: "synthetic",
+      provenance: "known",
+      exposure: "untouched",
+      protocol_files: [],
+      instrument_files: [],
+      forbidden_markers: [],
+      arms: [
+        {
+          name: "a",
+          payload_path: "payload.json",
+          subject_hash: subjectHashOf(payload),
+          evidence_hash: sha256("[]"),
+          review_files: [],
+        },
+      ],
+    };
+    writeFileSync(join(dir, "packet.json"), JSON.stringify(manifest));
+    const result = validatePacket(dir, new Set());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.some((f) => f.reason === "missing_identity")).toBe(true);
+  });
+});
+
+test("a malformed null entry in a declared file list is a named refusal, not a thrown error", () => {
+  withTempDir((dir) => {
+    buildValidPacket(dir);
+    const manifest = JSON.parse(readFileSync(join(dir, "packet.json"), "utf8"));
+    manifest.protocol_files.push(null);
+    writeFileSync(join(dir, "packet.json"), JSON.stringify(manifest));
+    let result: ValidationResult;
+    expect(() => {
+      result = validatePacket(dir, new Set());
+    }).not.toThrow();
+    expect(result!.ok).toBe(false);
+    if (!result!.ok) expect(result!.failures.some((f) => f.reason === "malformed_metadata")).toBe(true);
   });
 });
 

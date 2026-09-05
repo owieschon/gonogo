@@ -91,34 +91,52 @@ function sha256OfFile(path: string): string | null {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+/**
+ * Validate and check a declared file list. Every element is treated as
+ * untrusted input straight from parsed JSON: a non-object, a missing path or
+ * a malformed digest is a named refusal, never a thrown TypeError. Returns
+ * only the entries that were well-formed enough to be checked against disk,
+ * so a caller can still tell "nothing declared" from "declared and clean".
+ */
 function checkFiles(
   root: string,
-  files: PacketFile[],
+  label: string,
+  files: unknown[],
   reason: DisqualifyReason,
   failures: ValidationFailure[],
-): void {
-  for (const f of files) {
-    if (typeof f.path !== "string" || f.path.trim() === "") {
-      failures.push({ reason: "malformed_metadata", detail: "a declared file is missing a path" });
+): PacketFile[] {
+  const wellFormed: PacketFile[] = [];
+  for (const entry of files) {
+    if (!isPlainObject(entry)) {
+      failures.push({ reason: "malformed_metadata", detail: `${label}: a declared file entry is not an object` });
       continue;
     }
-    if (!SHA256_HEX.test(f.sha256)) {
+    const f = entry as { path?: unknown; sha256?: unknown };
+    if (typeof f.path !== "string" || f.path.trim() === "") {
+      failures.push({ reason: "malformed_metadata", detail: `${label}: a declared file is missing a path` });
+      continue;
+    }
+    if (typeof f.sha256 !== "string" || !SHA256_HEX.test(f.sha256)) {
       failures.push({
         reason: "malformed_metadata",
         detail: `${f.path}: declared sha256 is not a lowercase 64-character hex digest`,
       });
       continue;
     }
-    const actual = sha256OfFile(resolve(root, f.path));
+    const declared: PacketFile = { path: f.path, sha256: f.sha256 };
+    const actual = sha256OfFile(resolve(root, declared.path));
     if (actual === null) {
-      failures.push({ reason, detail: `${f.path}: file is missing` });
-    } else if (actual !== f.sha256) {
+      failures.push({ reason, detail: `${declared.path}: file is missing` });
+    } else if (actual !== declared.sha256) {
       failures.push({
         reason,
-        detail: `${f.path}: declared sha256 ${f.sha256} does not match actual ${actual}`,
+        detail: `${declared.path}: declared sha256 ${declared.sha256} does not match actual ${actual}`,
       });
+    } else {
+      wellFormed.push(declared);
     }
   }
+  return wellFormed;
 }
 
 /** Deterministic identity of exactly what a reviewer is shown for one arm. */
@@ -204,18 +222,28 @@ export function validatePacket(packetDir: string, exposedCaseIds: ReadonlySet<st
     });
   }
 
-  const protocolFiles = Array.isArray(raw.protocol_files) ? (raw.protocol_files as PacketFile[]) : null;
+  const protocolFiles = Array.isArray(raw.protocol_files) ? raw.protocol_files : null;
   if (protocolFiles === null) {
     failures.push({ reason: "malformed_metadata", detail: "packet.json protocol_files must be an array" });
+  } else if (protocolFiles.length === 0) {
+    failures.push({
+      reason: "missing_identity",
+      detail: "packet.json protocol_files declares no frozen protocol document",
+    });
   } else {
-    checkFiles(packetDir, protocolFiles, "protocol_digest_mismatch", failures);
+    checkFiles(packetDir, "protocol_files", protocolFiles, "protocol_digest_mismatch", failures);
   }
 
-  const instrumentFiles = Array.isArray(raw.instrument_files) ? (raw.instrument_files as PacketFile[]) : null;
+  const instrumentFiles = Array.isArray(raw.instrument_files) ? raw.instrument_files : null;
   if (instrumentFiles === null) {
     failures.push({ reason: "malformed_metadata", detail: "packet.json instrument_files must be an array" });
+  } else if (instrumentFiles.length === 0) {
+    failures.push({
+      reason: "missing_identity",
+      detail: "packet.json instrument_files declares no frozen judge instrument",
+    });
   } else {
-    checkFiles(packetDir, instrumentFiles, "payload_digest_mismatch", failures);
+    checkFiles(packetDir, "instrument_files", instrumentFiles, "payload_digest_mismatch", failures);
   }
 
   const forbiddenMarkers = Array.isArray(raw.forbidden_markers)
@@ -243,9 +271,23 @@ export function validatePacket(packetDir: string, exposedCaseIds: ReadonlySet<st
         continue;
       }
 
-      checkFiles(packetDir, arm.review_files, "payload_digest_mismatch", failures);
+      if (arm.review_files.length === 0) {
+        failures.push({
+          reason: "missing_identity",
+          detail: `${arm.name}: review_files declares nothing shown to the reviewer`,
+        });
+        continue;
+      }
+      const wellFormedReviewFiles = checkFiles(
+        packetDir,
+        `${arm.name}.review_files`,
+        arm.review_files,
+        "payload_digest_mismatch",
+        failures,
+      );
+      const reviewFilesFullyWellFormed = wellFormedReviewFiles.length === arm.review_files.length;
       for (const marker of forbiddenMarkers) {
-        for (const f of arm.review_files) {
+        for (const f of wellFormedReviewFiles) {
           const abs = resolve(packetDir, f.path);
           if (!existsSync(abs)) continue;
           if (readFileSync(abs, "utf8").includes(marker)) {
@@ -284,12 +326,14 @@ export function validatePacket(packetDir: string, exposedCaseIds: ReadonlySet<st
         subjectHashes.push(actualSubjectHash);
       }
 
-      const actualEvidenceHash = renderedEvidenceHash(packetDir, arm.review_files);
-      if (actualEvidenceHash !== arm.evidence_hash) {
-        failures.push({
-          reason: "payload_digest_mismatch",
-          detail: `${arm.name}: declared evidence_hash does not match the actual review material`,
-        });
+      if (reviewFilesFullyWellFormed) {
+        const actualEvidenceHash = renderedEvidenceHash(packetDir, wellFormedReviewFiles);
+        if (actualEvidenceHash !== arm.evidence_hash) {
+          failures.push({
+            reason: "payload_digest_mismatch",
+            detail: `${arm.name}: declared evidence_hash does not match the actual review material`,
+          });
+        }
       }
     }
     if (arms !== null && arms.length >= 2 && subjectHashes.length === arms.length) {
