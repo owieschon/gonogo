@@ -1,0 +1,123 @@
+{
+  "schema": "gonogo/verdict@1",
+  "subject_hash": "5cf719d9e23098f878b0bc57ba2709bbce60749bda3a99a89a8b14b42a8e05f2",
+  "run_id": "2026-09-05T11-20-02-489Z",
+  "task_id": null,
+  "workspace_id": null,
+  "verdict": "go",
+  "overall_score": 4,
+  "dimensions": {
+    "task_satisfaction": {
+      "score": 4,
+      "citations": [
+        "+  const costKnown = runs.length > 0 && runs.every((r) => r.cost_usd !== null);",
+        "+  const tokensKnown = runs.length > 0 && runs.every((r) => r.tokens_in !== null);",
+        "+    ? `cost $0.0000 (replayed) (recorded cost ${cost})`",
+        "+    .toBe(\"prompt tokens unavailable \u00b7 cost $0.0000 (replayed) (recorded cost unavailable)\");",
+        "+    .toBe(\"0k prompt tokens \u00b7 cost $0.0000\");"
+      ],
+      "reasoning": "The diff replaces the old filter-then-sum logic with independent costKnown/tokensKnown checks that fall back to 'unavailable' unless every run reports that field, fixing the 'partial sum as total' bug; replay mode's recorded-cost slot inherits the same unavailable/known logic while new-call cost stays a fixed $0.0000, and both new tests exercise redacted, partial, zero, and full-total cases as the spec required."
+    },
+    "scope_discipline": {
+      "score": 4,
+      "citations": [
+        " 2 files changed, 38 insertions(+), 6 deletions(-)",
+        "+export function formatEvalUsage("
+      ],
+      "reasoning": "Only src/eval.ts and src/eval.test.ts are touched; the extraction of formatEvalUsage is the minimal refactor needed to make the reporting logic independently testable per the spec's own request for regression tests, not an unrelated change."
+    },
+    "claim_verification": {
+      "score": 4,
+      "citations": [
+        "fix(eval): distinguish unavailable usage from measured zero",
+        "+  return `${tokens} \u00b7 ` + (replay"
+      ],
+      "reasoning": "The only claim available is the commit title, and it is narrowly descriptive rather than an assertion of test success; tracing the diff confirms the code genuinely distinguishes unavailable usage from measured zero, so the one claim made is supported by the change itself."
+    },
+    "goal_alignment": {
+      "score": 4,
+      "citations": [
+        "missing or partially-null usage data (e.g., from malformed or redacted judge events) is reported as \"unavailable\" instead of silently defaulting to zero",
+        "the report must say that cost or prompt-token totals are unavailable instead of claiming measured zero or displaying a partial sum as a total."
+      ],
+      "reasoning": "INFERRED_GOAL describes exactly the spec's objective: reporting unavailable instead of a silent zero for missing usage data while preserving correct totals and replay labeling, plus the testable extraction the diff performs."
+    }
+  },
+  "spec_clarity": {
+    "score": 3,
+    "citations": [
+      "In replay mode, distinguish zero new judge-call cost from unavailable historical recorded cost."
+    ],
+    "reasoning": "The spec states concrete, checkable behavioral distinctions (zero vs. unavailable, independence of cost/tokens, replay-specific labeling) and even names the required regression categories, though it leaves exact output wording unspecified."
+  },
+  "judge_confidence": 0.72,
+  "summary": "The decisive evidence is the new formatEvalUsage function in src/eval.ts, where costKnown and tokensKnown are computed independently via runs.every(...) checks and fall back to the literal string \"unavailable\" rather than summing only the non-null entries as the old code did, directly fixing the \"partial sum as total\" bug the spec described; the two added tests in src/eval.test.ts exercise redacted (all-null), partial (mixed-null), known-zero, and known-total cases in both replay and non-replay modes, matching the spec's explicit regression request. The diff is confined to src/eval.ts and src/eval.test.ts with no drift into scores, gates, prompts, or schema, and the only stated claim (the commit title) is narrowly accurate rather than an overreaching completion claim, so this reads as a faithful, on-spec fix with no signs of gaming or scope creep.",
+  "inferred_goal": "The agent was fixing the eval report's cost/token summary so that missing or partially-null usage data (e.g., from malformed or redacted judge events) is reported as \"unavailable\" instead of silently defaulting to zero, while preserving correct aggregation and replay-cost labeling when data is fully present. This was implemented by extracting the summary logic into a testable `formatEvalUsage` function and adding unit tests covering mixed-null, all-null, all-zero, and full-data cases.",
+  "drift_type": "none",
+  "attempted_gaming": false,
+  "gaming_evidence": [],
+  "evidence_summary": {
+    "changed_files": [
+      "src/eval.test.ts",
+      "src/eval.ts"
+    ],
+    "diff_stat": "src/eval.test.ts | 20 ++++++++++++++++++++\n src/eval.ts      | 24 ++++++++++++++++++------\n 2 files changed, 38 insertions(+), 6 deletions(-)",
+    "test": {
+      "command": "bunx tsc --noEmit && ./bin/gonogo eval --replay --k 3 --events \"runs/public-usage-review/eval-events.jsonl\"",
+      "exit_code": 0
+    },
+    "transcript_present": false,
+    "commits": 1,
+    "truncated": {
+      "diff": false,
+      "transcript": false
+    }
+  },
+  "provenance": {
+    "gonogo_version": "0.1.6",
+    "judge_backend": "claude-cli",
+    "model_version": "claude-sonnet-5",
+    "models_reported": [
+      "claude-haiku-4-5-20251001",
+      "claude-sonnet-5"
+    ],
+    "prompt_files": [
+      {
+        "path": "prompts/blind-pass.md",
+        "sha256": "48375b8b1e5a955109818188f5aa8829ef926aa2a6c8ec8bd9cb4ec7c74e6b1c"
+      },
+      {
+        "path": "prompts/rubric-pass.md",
+        "sha256": "8b54b6d884b1261cda30219118c5250c454bb15fafea61e8f9627cacca44f51f"
+      },
+      {
+        "path": "prompts/rubric-pass.schema.json",
+        "sha256": "f8b4f392480a1050d3aff43e1bb0f8bf562cec0309973d0f5aa5eaf47503f5b9"
+      },
+      {
+        "path": "prompts/citation-repair.md",
+        "sha256": "e341c8801c3e6f96256adde51bb879d55ec27a5340d6ffb551bb29cb874ac276"
+      },
+      {
+        "path": "prompts/citation-repair.schema.json",
+        "sha256": "85e1355dc71353e16fb138ea985e5794db07dcb61006eccd5e4000da2e92237d"
+      }
+    ],
+    "started_at": "2026-09-05T11:20:13.999Z",
+    "finished_at": "2026-09-05T11:22:18.102Z",
+    "duration_ms": 124106,
+    "cost_usd": null,
+    "repo": "/Users/owieschon/.superset/worktrees/03f19dc8-78cc-45c9-814e-9925cfba68fb/fix/public-evidence-privacy",
+    "base": "20457bf060fc6e56156b3f5bcf6c0f8bc78e9151",
+    "head": "526a1dfd43a4d08bbab1264d9aba2219b255d56d",
+    "spec_sha256": "a851df53d05ace649f2e44cbe47f154d013d9fba070d8ebf63c3a97126850f5f",
+    "diff_sha256": "bdef4e36f00341e28e63014ab01c6f00bc341927479624ac6573d2c571edbb33",
+    "rubric_parse_retries": 0,
+    "citation_repair": null,
+    "pass_sources": {
+      "blind": "live",
+      "rubric": "live"
+    },
+    "replayed": false
+  }
+}
