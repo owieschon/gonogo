@@ -515,7 +515,7 @@ calibration.
 `0085f01ba443c0020ee614ee89a5d416a9aac4f7`, spec
 `audits/self-judge-unit-test-evidence-spec.md`, sha256
 `5b97657fc4bb0ba793f17472db49b65a4c91cb94ea68be986bb849f41a5153fb`. Evidence: 3
-changed files, 9,660 characters of diff, not truncated, 1 commit, no transcript.
+changed files, 9,656 characters of diff, not truncated, 1 commit, no transcript.
 `HEAD` and its tree were identical before and after the run and the working tree
 stayed clean, so the test command did not mutate the subject. The judged
 `TEST_RESULT` covers all three segments of the new chain and exits 0, including
@@ -569,6 +569,3 @@ timing value is unchanged. Usage counts appear only in the private judge event
 and are not published. The `TEST_RESULT` command the judge cites names the
 private run directory this audit wrote to; it is reproduced verbatim rather than
 edited, because editing it would break a citation.
-
-**Not yet complete.** An independent cross-family review is pending, so this
-change is not reported ready overall.
