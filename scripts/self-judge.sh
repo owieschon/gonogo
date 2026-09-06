@@ -39,8 +39,7 @@ echo "the tool is the subject here, not the operator"
 # then the unit tests, joined by && so the first failure stops the chain and
 # surfaces as a non-zero exit code in TEST_RESULT. Eval's fixture events stay
 # inside this run directory; the test command must not mutate the subject
-# repository after its evidence snapshot was taken, which `bun test` respects by
-# working only in temporary directories.
+# repository after its evidence snapshot was taken.
 exec "$root/bin/gonogo" judge \
   --spec "$spec" \
   --repo "$root" \
