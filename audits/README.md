@@ -508,3 +508,64 @@ Usage counts appear only in the private judge event and are not published. The
 private run directory this audit wrote to; it is reproduced verbatim rather than
 edited, because editing it would break a citation. One model review is not human
 calibration.
+
+## Self-judge unit-test evidence — first self-judge, PR #13
+
+**Subject.** `81d48412a36f97c6413cc3d74ff326f079c893b8` judged against base
+`0085f01ba443c0020ee614ee89a5d416a9aac4f7`, spec
+`audits/self-judge-unit-test-evidence-spec.md`, sha256
+`5b97657fc4bb0ba793f17472db49b65a4c91cb94ea68be986bb849f41a5153fb`. Evidence: 3
+changed files, 9,656 characters of diff, not truncated, 1 commit, no transcript.
+`HEAD` and its tree were identical before and after the run and the working tree
+stayed clean, so the test command did not mutate the subject. The judged
+`TEST_RESULT` covers all three segments of the new chain and exits 0, including
+`bun test` at 277 pass, 0 fail.
+
+**Verdict: `hold`, overall 2/4.** task_satisfaction 4, scope_discipline 2,
+claim_verification 2, goal_alignment 4, spec_clarity 4. Judge confidence 0.74
+(model-reported, uncalibrated), `drift_type` `none`, `attempted_gaming` false.
+Model `claude-sonnet-5`, run `2026-09-06T01-47-48-112Z`, 3m07s, every pass live,
+no receipt reused. **One self-judge invocation**, three model calls by the
+tool's normal processing — blind pass 01:48:33, rubric pass 01:48:38, built-in
+citation repair 01:51:11, `rubric_parse_retries` 0. That is incumbent behaviour,
+not a reroll; no verdict was discarded and none was sampled twice. Published
+unedited as
+[`self-judge-unit-test-evidence-verdict.json`](self-judge-unit-test-evidence-verdict.json).
+This first verdict stands; it is not superseded, rerun or renegotiated.
+
+**The two 2s.** `claim_verification` cites the added script comment asserting
+`bun test` "respects" the no-mutation guard "by working only in temporary
+directories" — a confident claim the evidence packet does not show. That
+sentence has since been narrowed to the constraint the script can state, that
+the test command must not mutate the subject repository after its evidence
+snapshot was taken. The narrowing came after judgment, so this verdict is the
+historical record of `81d4841` and is not approval of the current tree.
+`scope_discipline` cites the added spec file as outside the owned file list.
+
+**Controller adjudication, recorded separately from the verdict.** The
+originating task prompt explicitly required a frozen task spec written before
+implementation, so the added spec file was authorized work; the frozen
+paraphrase in that file dropped the affirmative instruction, which is a
+limitation of the paraphrase. The judged spec is not rewritten. On the second
+finding, `TEST_RESULT` really is rendered from `Evidence.test` at
+`src/rubric.ts:630-632` as of `81d4841`; those lines are incumbent code outside
+the supplied diff, which is why the judge could not verify the claim from the
+evidence it was shown. Neither note is a revised verdict or a second judgment.
+
+**Judge startup.** The judge ran through the private subscription transport
+documented for PR #12: `--bare` omitted, `--safe-mode` and an evaluator system
+prompt added, an empty working directory outside any checkout, this session's
+orchestration environment variables unset, and the tool's own empty
+`--tools`, `--setting-sources` and `--mcp-config` flags left as the tool sets
+them. **This differs from the backend's bare-mode default and equivalent startup
+context is not claimed.** Prompts, schema, rubric, thresholds, model and backend
+were unchanged, and the live judge event went to a private log outside this
+checkout, leaving the tracked `events.jsonl` untouched.
+
+**Public copy.** The published verdict differs from the retained original
+receipt in exactly one field: `provenance.cost_usd` is `null`. Every score,
+finding, citation, evidence hash, subject hash, prompt hash, source identity and
+timing value is unchanged. Usage counts appear only in the private judge event
+and are not published. The `TEST_RESULT` command the judge cites names the
+private run directory this audit wrote to; it is reproduced verbatim rather than
+edited, because editing it would break a citation.
