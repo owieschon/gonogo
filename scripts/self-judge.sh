@@ -35,14 +35,16 @@ fi
 echo "self-judging $root against $base with spec $spec"
 echo "the tool is the subject here, not the operator"
 
-# --test-cmd is the repo's own gate: typecheck plus the fixture set in replay
-# mode. Its fixture events stay inside this run directory; the test command
-# must not mutate the subject repository after its evidence snapshot was taken.
+# --test-cmd is the repo's own gate: typecheck, the fixture set in replay mode,
+# then the unit tests, joined by && so the first failure stops the chain and
+# surfaces as a non-zero exit code in TEST_RESULT. Eval's fixture events stay
+# inside this run directory; the test command must not mutate the subject
+# repository after its evidence snapshot was taken.
 exec "$root/bin/gonogo" judge \
   --spec "$spec" \
   --repo "$root" \
   --base "$base" \
-  --test-cmd "bunx tsc --noEmit && ./bin/gonogo eval --replay --k 3 --events \"$out/eval-events.jsonl\"" \
+  --test-cmd "bunx tsc --noEmit && ./bin/gonogo eval --replay --k 3 --events \"$out/eval-events.jsonl\" && bun test" \
   --max-diff-chars 900000 \
   --out "$out" \
   "${extra[@]}"
