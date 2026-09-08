@@ -428,10 +428,6 @@ export function isJudgeEvent(e: GonogoEvent): e is JudgeEvent {
 export function isRaterEvent(e: GonogoEvent): e is RaterEvent {
   return e.kind === "rater";
 }
-export function isOutcomeEvent(e: GonogoEvent): e is OutcomeEvent {
-  return e.kind === "outcome";
-}
-
 /** Resolve the explicit judge/outcome join, rejecting dangling or mismatched ids. */
 export function requireOutcomeRun(
   events: GonogoEvent[],
