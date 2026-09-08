@@ -1,5 +1,5 @@
 /** Materialise a fixture into a throwaway git repo the judge can diff. */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -85,7 +85,3 @@ export function materialize(fx: Fixture): { repo: string; base: string; cleanup:
   return { repo, base, cleanup: () => rmSync(repo, { recursive: true, force: true }) };
 }
 
-export function ensureDir(d: string): string {
-  mkdirSync(d, { recursive: true });
-  return d;
-}
