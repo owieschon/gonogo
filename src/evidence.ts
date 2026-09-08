@@ -197,10 +197,6 @@ function captureTests(repo: string, cmd: string): TestCapture {
   };
 }
 
-export function runTests(repo: string, cmd: string): TestResult {
-  return captureTests(repo, cmd).visible;
-}
-
 export interface CollectOptions {
   repo: string;
   base: string;
