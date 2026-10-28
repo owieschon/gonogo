@@ -1,0 +1,14 @@
+{
+  "schema": "gonogo/human@1",
+  "run_id": "manual-pr-2-owner-adjudication",
+  "reviewer": "owieschon",
+  "recorded_at": "2026-09-01T10:02:03Z",
+  "dimensions": {
+    "task_satisfaction": 2,
+    "scope_discipline": 4,
+    "claim_verification": 3,
+    "goal_alignment": 4
+  },
+  "spec_clarity": 2,
+  "notes": "Owner adjudication of PR #2 using the frozen verbatim-spec evidence packet. This review was recorded after gonogo's HOLD/2 verdict and its missing stacked-dependency finding had already been disclosed in the conversation, so it is not blind calibration and must remain unpaired. task_satisfaction 2: subject_hash is implemented well and verdictApplicability supplies recollect-and-compare logic, but no consumer calls it and the requested stacked-work rule to stop at the first unjudged dependency is absent. scope_discipline 4: every diff hunk serves provenance and applicability. claim_verification 3: commit claims are modest and supported, but the missing stacked-dependency rule was not disclosed; replay proves the pipeline and schema path, not fresh judge behavior. goal_alignment 4: the blind inferred goal closely matches the assigned objective. spec_clarity 2: the naturalistic chat turn communicates intent but leaves acceptance criteria and PR boundaries loose. Most serious defect: the undisclosed stacked-dependency stop rule is missing and should block the PR/Superset adapter until specified or implemented."
+}
